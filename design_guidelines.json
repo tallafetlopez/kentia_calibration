@@ -1,0 +1,159 @@
+{
+  "theme": "light",
+  "archetype": "Archetype 4 (Swiss & High-Contrast)",
+  "emotional_tone": "Authoritative, precise, trustworthy, frictionless, industrial-chic",
+  "typography": {
+    "fonts": {
+      "heading": "Chivo",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl font-bold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-800",
+      "h3": "text-xl font-medium tracking-tight text-slate-800",
+      "h4": "text-lg font-medium text-slate-800",
+      "body": "text-sm text-slate-600 leading-relaxed",
+      "mono": "text-xs font-mono text-slate-500 tracking-wider",
+      "label": "text-xs font-semibold uppercase tracking-[0.1em] text-slate-500"
+    }
+  },
+  "colors": {
+    "background": {
+      "app": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "surfaceHover": "#F1F5F9"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "muted": "#94A3B8"
+    },
+    "border": {
+      "default": "#E2E8F0",
+      "focus": "#94A3B8"
+    },
+    "primary": {
+      "default": "#0F172A",
+      "hover": "#1E293B",
+      "text": "#FFFFFF"
+    },
+    "accent": {
+      "default": "#2563EB",
+      "hover": "#1D4ED8",
+      "text": "#FFFFFF"
+    },
+    "lifecycle_states": {
+      "EDIT": {
+        "bg": "bg-slate-100",
+        "text": "text-slate-700",
+        "border": "border-slate-200",
+        "hex": "#64748B"
+      },
+      "UNDER_APPROVAL": {
+        "bg": "bg-amber-50",
+        "text": "text-amber-700",
+        "border": "border-amber-200",
+        "hex": "#F59E0B"
+      },
+      "APPROVED": {
+        "bg": "bg-emerald-50",
+        "text": "text-emerald-700",
+        "border": "border-emerald-200",
+        "hex": "#10B981"
+      },
+      "RELEASE_CANDIDATE": {
+        "bg": "bg-violet-50",
+        "text": "text-violet-700",
+        "border": "border-violet-200",
+        "hex": "#8B5CF6"
+      },
+      "RELEASED": {
+        "bg": "bg-blue-50",
+        "text": "text-blue-700",
+        "border": "border-blue-200",
+        "hex": "#3B82F6"
+      },
+      "DEPRECATED": {
+        "bg": "bg-red-50",
+        "text": "text-red-700",
+        "border": "border-red-200",
+        "hex": "#EF4444"
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-6 md:p-8",
+    "section_gap": "gap-8",
+    "item_gap": "gap-4",
+    "border_radius": {
+      "cards": "rounded-md",
+      "buttons": "rounded-md",
+      "badges": "rounded-full"
+    },
+    "grid_system": {
+      "dashboard": "grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
+      "forms": "grid-cols-1 md:grid-cols-2 gap-6"
+    }
+  },
+  "components": {
+    "cards": {
+      "style": "bg-white border border-slate-200 rounded-md shadow-sm",
+      "header": "px-6 py-4 border-b border-slate-100",
+      "body": "p-6"
+    },
+    "tables": {
+      "style": "w-full text-left text-sm",
+      "header": "bg-slate-50 border-y border-slate-200 text-slate-600 font-medium py-3 px-4",
+      "row": "border-b border-slate-100 hover:bg-slate-50 transition-colors",
+      "cell": "py-3 px-4"
+    },
+    "tabs": {
+      "list": "flex space-x-6 border-b border-slate-200 mb-6",
+      "trigger": "pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 border-b-2 border-transparent hover:border-slate-300 transition-all",
+      "active": "text-blue-600 border-b-2 border-blue-600"
+    },
+    "buttons": {
+      "primary": "bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-md font-medium text-sm transition-all focus:ring-2 focus:ring-slate-400 focus:ring-offset-2",
+      "secondary": "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-md font-medium text-sm transition-all focus:ring-2 focus:ring-slate-400 focus:ring-offset-2",
+      "ghost": "bg-transparent text-slate-600 hover:bg-slate-100 px-4 py-2 rounded-md font-medium text-sm transition-all"
+    },
+    "badges": {
+      "base": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
+    }
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "page_transition": "animate-in fade-in slide-in-from-bottom-2 duration-300"
+  },
+  "accessibility": {
+    "focus_ring": "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
+    "test_attributes": "All interactive elements must include data-testid attributes (e.g., data-testid='approve-dataset-button')"
+  },
+  "media": {
+    "icons_library": "lucide-react",
+    "image_urls": [
+      {
+        "category": "login_background",
+        "url": "https://static.prod-images.emergentagent.com/jobs/f6482027-360d-49a2-a092-31266bc0a632/images/5c1ffbccf2cdd32380e6b5660740034e6510ce70f9feb5f7ab63b8551cbca0be.png",
+        "description": "Minimalist abstract 3D render of a clean white control room or laboratory data environment, cinematic lighting. To be used as the split-screen background for Login/Register pages."
+      },
+      {
+        "category": "abstract_hero",
+        "url": "https://static.prod-images.emergentagent.com/jobs/f6482027-360d-49a2-a092-31266bc0a632/images/d9aee57b873911d1333f4c0aea419e4b10570ab4e705d11e9b9997fede93a90f.png",
+        "description": "Macro photography of an intricate metallic engine component. Can be used in empty states or banner areas within the app."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the color mappings for the 6 lifecycle states in all badges, charts, and list items.",
+    "Do NOT use generic card shadows everywhere. Use explicit 1px borders (#E2E8F0) and flat backgrounds for a structural engineering look.",
+    "Use Lucide-React for icons, ensuring consistent stroke-width (1.5 or 2).",
+    "In the Dataset Detail page, use the 'tabs' component styling mapped in this file (underline style, not pills).",
+    "In the Traceability Explorer, use a clean layout (e.g., react-flow or simple CSS flex/grid branches) to show Software -> Dataset -> Vehicle linkage.",
+    "Add data-testid attributes to all buttons, tabs, and form elements.",
+    "Ensure 'Inter' is NOT used for headings. Stick to 'Chivo' for headers and 'IBM Plex Sans' or 'Inter' for body.",
+    "Implement the UI using raw Tailwind HTML/JSX structure for layout, and customized Shadcn components for complex interactions (Tables, Dropdowns, Tabs).",
+    "Avoid generic 'SaaS purple' gradients. Rely on high contrast grayscale with specific functional colors."
+  ]
+}
