@@ -28,6 +28,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import LabelsGrid from "../components/LabelsGrid";
 
 const REVIEW_DOMAINS = [
   { key: "technical", label: "Technical Review", roles: ["Calibration_Engineer", "PI_Engineering_Manager"] },
@@ -86,27 +87,6 @@ export default function DatasetDetailPage() {
   const incompleteLabels = labels.filter((l) => l.confidence_status === "EMPTY" ||
     (l.regulatory_relevance === "YES" && !l.change_justification));
   const modifiedCount = labels.filter((l) => l.modified).length;
-
-  const filtered = labels.filter((l) => {
-    if (filter.q && !l.label_name.toLowerCase().includes(filter.q.toLowerCase())) return false;
-    if (filter.modified && !l.modified) return false;
-    if (filter.regulatory && l.regulatory_relevance !== "YES") return false;
-    if (filter.incomplete && !(l.confidence_status === "EMPTY" || (l.regulatory_relevance === "YES" && !l.change_justification))) return false;
-    return true;
-  });
-
-  const saveLabel = async () => {
-    try {
-      const patch = {};
-      ["current_value", "level", "confidence_status", "regulatory_relevance", "regulation_reference",
-        "parametrizable_in_customer", "parametrizable_override_justification", "change_justification", "comments"
-      ].forEach((k) => { if (editing[k] !== undefined) patch[k] = editing[k]; });
-      await api.patch(`/datasets/${id}/labels/${editing.id}`, patch);
-      toast.success("Label updated");
-      setEditing(null);
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
 
   const runTechValidate = async () => {
     try {
@@ -394,132 +374,9 @@ export default function DatasetDetailPage() {
           )}
         </TabsContent>
 
-        {/* Labels */}
-        <TabsContent value="labels" className="mt-6 space-y-4">
-          <div className="panel p-4 flex flex-wrap gap-3 items-end">
-            <div className="flex-1 min-w-[200px]">
-              <Label className="tiny-label">Search</Label>
-              <Input value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} className="mt-1.5" placeholder="Label name…" data-testid="lbl-search" />
-            </div>
-            <label className="flex items-center gap-2 text-xs px-3 py-2 border border-slate-200 rounded-md cursor-pointer">
-              <Checkbox checked={filter.modified} onCheckedChange={(v) => setFilter({ ...filter, modified: !!v })} /> Modified
-            </label>
-            <label className="flex items-center gap-2 text-xs px-3 py-2 border border-slate-200 rounded-md cursor-pointer">
-              <Checkbox checked={filter.regulatory} onCheckedChange={(v) => setFilter({ ...filter, regulatory: !!v })} /> Regulatory
-            </label>
-            <label className="flex items-center gap-2 text-xs px-3 py-2 border border-slate-200 rounded-md cursor-pointer">
-              <Checkbox checked={filter.incomplete} onCheckedChange={(v) => setFilter({ ...filter, incomplete: !!v })} /> Incomplete
-            </label>
-          </div>
-
-          <div className="panel overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-left">
-                  <th className="tiny-label py-3 px-4">Label</th>
-                  <th className="tiny-label py-3 px-4">Value</th>
-                  <th className="tiny-label py-3 px-4">Unit</th>
-                  <th className="tiny-label py-3 px-4">Level</th>
-                  <th className="tiny-label py-3 px-4">Confidence</th>
-                  <th className="tiny-label py-3 px-4">Attributes</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((l) => (
-                  <tr key={l.id} className="border-b border-slate-100 table-row" data-testid={`lbl-row-${l.label_name}`}>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-900">{l.label_name}<span className="ml-1 text-[10px] text-slate-400">{l.data_type}</span></td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-800">{l.current_value || "—"}</td>
-                    <td className="py-3 px-4 text-xs text-slate-500">{l.unit || "—"}</td>
-                    <td className="py-3 px-4 text-[10px] font-mono text-slate-600">{l.level}</td>
-                    <td className="py-3 px-4">
-                      <LabelBadge tone={l.confidence_status === "EMPTY" ? "warn" : l.confidence_status === "DOCUMENTED" ? "ok" : "info"}>{l.confidence_status}</LabelBadge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {l.regulatory_relevance === "YES" && <LabelBadge tone="reg"><ShieldAlert className="w-3 h-3" /> REG</LabelBadge>}
-                        {l.parametrizable_in_customer === "YES" && <LabelBadge tone="info">CUSTOMER</LabelBadge>}
-                        {l.modified && <LabelBadge tone="warn">MOD</LabelBadge>}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <Button variant="ghost" size="sm" disabled={readOnly} onClick={() => setEditing({ ...l })} data-testid={`lbl-edit-${l.label_name}`}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-sm text-slate-500">No labels match filters</td></tr>}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Edit panel */}
-          <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
-            <DialogContent className="max-w-xl">
-              <DialogHeader>
-                <DialogTitle>Edit label — <span className="font-mono text-sm">{editing?.label_name}</span></DialogTitle>
-              </DialogHeader>
-              {editing && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <Label className="tiny-label">Current value</Label>
-                    <Input value={editing.current_value || ""} onChange={(e) => setEditing({ ...editing, current_value: e.target.value })} className="mt-1.5 font-mono" data-testid="lbl-edit-value" />
-                  </div>
-                  <div>
-                    <Label className="tiny-label">Level</Label>
-                    <Select value={editing.level} onValueChange={(v) => setEditing({ ...editing, level: v })}>
-                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                      <SelectContent>{["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="tiny-label">Confidence</Label>
-                    <Select value={editing.confidence_status} onValueChange={(v) => setEditing({ ...editing, confidence_status: v })}>
-                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                      <SelectContent>{["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="tiny-label">Regulatory</Label>
-                    <Select value={editing.regulatory_relevance} onValueChange={(v) => setEditing({ ...editing, regulatory_relevance: v })}>
-                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="NO">NO</SelectItem><SelectItem value="YES">YES</SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="tiny-label">Parametrizable in customer</Label>
-                    <Select value={editing.parametrizable_in_customer} onValueChange={(v) => setEditing({ ...editing, parametrizable_in_customer: v })}>
-                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="NO">NO</SelectItem><SelectItem value="YES">YES</SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="tiny-label">Regulation reference</Label>
-                    <Input value={editing.regulation_reference || ""} onChange={(e) => setEditing({ ...editing, regulation_reference: e.target.value })} className="mt-1.5" />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="tiny-label">Change justification {editing.regulatory_relevance === "YES" && <span className="text-red-600">*</span>}</Label>
-                    <Textarea value={editing.change_justification || ""} onChange={(e) => setEditing({ ...editing, change_justification: e.target.value })} className="mt-1.5" rows={2} data-testid="lbl-edit-justification" />
-                  </div>
-                  {editing.regulatory_relevance === "YES" && editing.parametrizable_in_customer === "YES" && (
-                    <div className="col-span-2">
-                      <Label className="tiny-label">Override justification (regulatory + customer-parametrizable)</Label>
-                      <Textarea value={editing.parametrizable_override_justification || ""} onChange={(e) => setEditing({ ...editing, parametrizable_override_justification: e.target.value })} className="mt-1.5" rows={2} />
-                    </div>
-                  )}
-                  <div className="col-span-2">
-                    <Label className="tiny-label">Comments</Label>
-                    <Textarea value={editing.comments || ""} onChange={(e) => setEditing({ ...editing, comments: e.target.value })} className="mt-1.5" rows={2} />
-                  </div>
-                </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-                <Button onClick={saveLabel} className="bg-slate-900 hover:bg-slate-800" data-testid="lbl-edit-save">Save label</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+        {/* Labels — Excel-style grid */}
+        <TabsContent value="labels" className="mt-6">
+          <LabelsGrid datasetId={id} labels={labels} readOnly={readOnly} onReload={load} />
         </TabsContent>
 
         {/* Changelog */}
