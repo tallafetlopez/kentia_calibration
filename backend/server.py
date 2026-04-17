@@ -1,89 +1,905 @@
-from fastapi import FastAPI, APIRouter
+"""HERKO Calibration Manager - FastAPI backend."""
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+import os
+import logging
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Query
+from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from models import (
+    _uuid,
+    _now,
+    ROLES,
+    RegisterBody,
+    LoginBody,
+    SwitchRoleBody,
+    SoftwareReleaseCreate,
+    DatasetCreate,
+    LabelUpdate,
+    LabelMassUpdate,
+    ReviewUpdate,
+    ReleaseSelectBody,
+    DeprecateBody,
+    DeriveBody,
+    VehicleSWIDCreate,
+)
+from auth_utils import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
+from seed import seed_all, A2L_LABELS_TEMPLATE, _make_labels
+
+# -------- Setup --------
+mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ["DB_NAME"]]
 
-# Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(title="HERKO Calibration Manager")
+api = APIRouter(prefix="/api")
 
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("herko")
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# -------- Helpers --------
+async def current_user(request: Request) -> dict:
+    return await get_current_user(request, db)
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
+def _strip(doc):
+    if doc is None:
+        return None
+    doc.pop("_id", None)
+    return doc
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+async def log_audit(entity_type: str, entity_id: str, action: str, author: str,
+                    previous_value=None, new_value=None, justification: str = ""):
+    entry = {
+        "id": _uuid(),
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "action": action,
+        "previous_value": str(previous_value) if previous_value is not None else None,
+        "new_value": str(new_value) if new_value is not None else None,
+        "author": author,
+        "date": _now(),
+        "justification": justification,
+    }
+    await db.audit_log.insert_one(entry)
 
-# Include the router in the main app
-app.include_router(api_router)
 
+def user_has_role(user: dict, *allowed_roles: str) -> bool:
+    active = user.get("active_role")
+    roles = set(user.get("roles", []))
+    if active and active in allowed_roles:
+        return True
+    return bool(roles.intersection(set(allowed_roles)))
+
+
+def require_role(user: dict, *allowed_roles: str):
+    if not user_has_role(user, *allowed_roles):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Requires role(s): {', '.join(allowed_roles)} (active: {user.get('active_role')})",
+        )
+
+
+# -------- Startup --------
+@app.on_event("startup")
+async def on_startup():
+    await db.users.create_index("email", unique=True)
+    await db.datasets.create_index("software_release_id")
+    await db.labels.create_index("dataset_id")
+    await db.audit_log.create_index("date")
+
+    existing = await db.users.count_documents({})
+    if existing == 0:
+        logger.info("Empty database — seeding demo data")
+        stats = await seed_all(db)
+        logger.info(f"Seeded: {stats}")
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    client.close()
+
+
+# =====================================================
+#                    AUTH
+# =====================================================
+@api.post("/auth/register")
+async def register(body: RegisterBody):
+    email = body.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    roles = body.roles or ["Calibration_Engineer"]
+    invalid = [r for r in roles if r not in ROLES]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Invalid roles: {invalid}")
+    user = {
+        "id": _uuid(),
+        "email": email,
+        "password_hash": hash_password(body.password),
+        "name": body.name,
+        "roles": roles,
+        "active_role": roles[0],
+        "created_at": _now(),
+    }
+    await db.users.insert_one(user)
+    token = create_access_token(user["id"], email)
+    user.pop("password_hash")
+    user.pop("_id", None)
+    return {"token": token, "user": user}
+
+
+@api.post("/auth/login")
+async def login(body: LoginBody):
+    email = body.email.lower()
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(user["id"], email)
+    user.pop("password_hash")
+    user.pop("_id", None)
+    return {"token": token, "user": user}
+
+
+@api.get("/auth/me")
+async def me(user: dict = Depends(current_user)):
+    return user
+
+
+@api.post("/auth/logout")
+async def logout(user: dict = Depends(current_user)):
+    return {"ok": True}
+
+
+@api.post("/auth/switch-role")
+async def switch_role(body: SwitchRoleBody, user: dict = Depends(current_user)):
+    if body.role not in user.get("roles", []):
+        raise HTTPException(status_code=403, detail="Role not assigned to user")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"active_role": body.role}})
+    user["active_role"] = body.role
+    return user
+
+
+@api.get("/auth/roles")
+async def list_roles():
+    return {"roles": ROLES}
+
+
+@api.get("/auth/users")
+async def list_users(user: dict = Depends(current_user)):
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return users
+
+
+# =====================================================
+#                    ECUs
+# =====================================================
+@api.get("/ecus")
+async def list_ecus(user: dict = Depends(current_user)):
+    return await db.ecus.find({}, {"_id": 0}).to_list(100)
+
+
+# =====================================================
+#                 SOFTWARE RELEASES
+# =====================================================
+@api.get("/software-releases")
+async def list_software_releases(
+    ecu_id: Optional[str] = None,
+    status: Optional[str] = None,
+    supplier: Optional[str] = None,
+    q: Optional[str] = None,
+    user: dict = Depends(current_user),
+):
+    filt = {}
+    if ecu_id:
+        filt["ecu_id"] = ecu_id
+    if status:
+        filt["status"] = status
+    if supplier:
+        filt["supplier"] = supplier
+    if q:
+        filt["$or"] = [
+            {"software_release_identifier": {"$regex": q, "$options": "i"}},
+            {"version": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": q, "$options": "i"}},
+        ]
+    return await db.software_releases.find(filt, {"_id": 0}).to_list(1000)
+
+
+@api.get("/software-releases/{sr_id}")
+async def get_software_release(sr_id: str, user: dict = Depends(current_user)):
+    sr = await db.software_releases.find_one({"id": sr_id}, {"_id": 0})
+    if not sr:
+        raise HTTPException(404, "Software release not found")
+    return sr
+
+
+@api.post("/software-releases")
+async def create_software_release(body: SoftwareReleaseCreate, user: dict = Depends(current_user)):
+    require_role(user, "PD_Project_Manager")
+    sr = body.model_dump()
+    sr["id"] = _uuid()
+    sr["status"] = "DRAFT"
+    sr["release_date"] = _now()
+    sr["validation_log"] = []
+    await db.software_releases.insert_one(sr)
+    await log_audit("software_release", sr["id"], "CREATED", user["email"], new_value=sr["software_release_identifier"])
+    sr.pop("_id", None)
+    return sr
+
+
+@api.patch("/software-releases/{sr_id}")
+async def update_software_release(sr_id: str, body: dict, user: dict = Depends(current_user)):
+    require_role(user, "PD_Project_Manager")
+    sr = await db.software_releases.find_one({"id": sr_id}, {"_id": 0})
+    if not sr:
+        raise HTTPException(404, "Not found")
+    allowed = {"description", "supplier", "a2l_file_reference", "dbc_reference", "dtc_list_reference", "other_artefacts"}
+    patch = {k: v for k, v in body.items() if k in allowed}
+    if patch:
+        await db.software_releases.update_one({"id": sr_id}, {"$set": patch})
+        await log_audit("software_release", sr_id, "UPDATED", user["email"], new_value=", ".join(patch.keys()))
+    return await db.software_releases.find_one({"id": sr_id}, {"_id": 0})
+
+
+@api.post("/software-releases/{sr_id}/validate")
+async def validate_release(sr_id: str, user: dict = Depends(current_user)):
+    require_role(user, "PD_Project_Manager")
+    sr = await db.software_releases.find_one({"id": sr_id}, {"_id": 0})
+    if not sr:
+        raise HTTPException(404, "Not found")
+    errors = []
+    if not sr.get("a2l_file_reference"):
+        errors.append("A2L file not linked")
+    if sr.get("status") == "ARCHIVED":
+        errors.append("Release is archived")
+    log_entry = {
+        "date": _now(),
+        "user": user["email"],
+        "action": "VALIDATION_RUN",
+        "errors": errors,
+    }
+    update = {"$push": {"validation_log": log_entry}}
+    if not errors:
+        update["$set"] = {"status": "VALID_FOR_CALIBRATION"}
+    await db.software_releases.update_one({"id": sr_id}, update)
+    await log_audit(
+        "software_release", sr_id, "VALIDATED" if not errors else "VALIDATION_FAILED",
+        user["email"], new_value="VALID_FOR_CALIBRATION" if not errors else "DRAFT",
+    )
+    return {"ok": not errors, "errors": errors}
+
+
+# =====================================================
+#                    DATASETS
+# =====================================================
+@api.get("/datasets")
+async def list_datasets(
+    software_release_id: Optional[str] = None,
+    lifecycle_state: Optional[str] = None,
+    creation_mode: Optional[str] = None,
+    deployment_context: Optional[str] = None,
+    author: Optional[str] = None,
+    locked: Optional[bool] = None,
+    q: Optional[str] = None,
+    user: dict = Depends(current_user),
+):
+    filt = {}
+    for k, v in [
+        ("software_release_id", software_release_id),
+        ("lifecycle_state", lifecycle_state),
+        ("creation_mode", creation_mode),
+        ("deployment_context", deployment_context),
+        ("author", author),
+    ]:
+        if v:
+            filt[k] = v
+    if locked is not None:
+        filt["locked"] = locked
+    if q:
+        filt["dataset_name"] = {"$regex": q, "$options": "i"}
+    return await db.datasets.find(filt, {"_id": 0}).to_list(2000)
+
+
+@api.get("/datasets/{ds_id}")
+async def get_dataset(ds_id: str, user: dict = Depends(current_user)):
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    sr = await db.software_releases.find_one({"id": d["software_release_id"]}, {"_id": 0})
+    baseline = None
+    if d.get("baseline_dataset_id"):
+        baseline = await db.datasets.find_one({"id": d["baseline_dataset_id"]}, {"_id": 0})
+    derived = await db.datasets.find({"baseline_dataset_id": ds_id}, {"_id": 0}).to_list(100)
+    vehicle_assignments = await db.vehicle_sw_ids.find({"dataset_id": ds_id}, {"_id": 0}).to_list(100)
+    return {
+        "dataset": d,
+        "software_release": sr,
+        "baseline": baseline,
+        "derived_datasets": derived,
+        "vehicle_assignments": vehicle_assignments,
+    }
+
+
+@api.post("/datasets")
+async def create_dataset(body: DatasetCreate, user: dict = Depends(current_user)):
+    require_role(user, "Calibration_Engineer", "Post_Sales_Engineer")
+    sr = await db.software_releases.find_one({"id": body.software_release_id}, {"_id": 0})
+    if not sr:
+        raise HTTPException(404, "Software release not found")
+    if sr["status"] != "VALID_FOR_CALIBRATION":
+        raise HTTPException(400, "Software release is not VALID_FOR_CALIBRATION — cannot create dataset")
+    if not sr.get("a2l_file_reference"):
+        raise HTTPException(400, "Software release has no A2L linked")
+
+    # Rule: REUSE_BASELINE restricted to VARIANT_SPECIFIC / POST_SALES / VIN_SPECIFIC
+    if body.creation_mode == "REUSE_BASELINE" and body.deployment_context not in (
+        "VARIANT_SPECIFIC", "POST_SALES", "VIN_SPECIFIC"
+    ):
+        raise HTTPException(400, "REUSE_BASELINE only allowed for VARIANT_SPECIFIC / POST_SALES / VIN_SPECIFIC")
+
+    baseline = None
+    if body.baseline_dataset_id:
+        baseline = await db.datasets.find_one({"id": body.baseline_dataset_id}, {"_id": 0})
+        if not baseline:
+            raise HTTPException(404, "Baseline dataset not found")
+        if body.creation_mode == "REUSE_BASELINE" and baseline["deployment_context"] == "PRODUCTION" and body.deployment_context == "PRODUCTION":
+            raise HTTPException(400, "Reused datasets cannot themselves be base PRODUCTION datasets")
+
+    d = {
+        "id": _uuid(),
+        "dataset_name": body.dataset_name,
+        "ecu_id": sr["ecu_id"],
+        "software_release_id": body.software_release_id,
+        "lifecycle_state": "EDIT",
+        "creation_mode": body.creation_mode,
+        "deployment_context": body.deployment_context,
+        "variant_id": body.variant_id,
+        "vin": body.vin,
+        "baseline_dataset_id": body.baseline_dataset_id,
+        "author": user["email"],
+        "creation_date": _now(),
+        "last_modified_date": _now(),
+        "technical_validation_status": "NOT_RUN",
+        "technical_validation_summary": [],
+        "locked": False,
+        "deployed": False,
+        "release_candidate_flag": False,
+        "changelog_summary": body.changelog_summary or f"Created via {body.creation_mode}",
+        "review": {
+            "technical": "PENDING", "project_configuration": "PENDING",
+            "regulatory": "PENDING", "vnv": "PENDING",
+            "technical_comments": "", "project_configuration_comments": "",
+            "regulatory_comments": "", "vnv_comments": "",
+            "vnv_report_reference": None,
+            "approval_decision": None, "approval_date": None, "approved_by": None,
+        },
+        "selected_deployment_context": None, "selected_variant_id": None,
+        "selection_justification": None, "selected_by": None, "selection_date": None,
+        "deprecation_justification": None, "deprecation_replacement_id": None, "deprecation_date": None,
+        "is_post_sales_derived": body.deployment_context in ("POST_SALES", "VIN_SPECIFIC"),
+    }
+    await db.datasets.insert_one(d)
+
+    # Copy labels from baseline or instantiate from A2L template
+    if baseline:
+        base_labels = await db.labels.find({"dataset_id": baseline["id"]}, {"_id": 0}).to_list(10000)
+        new_labels = []
+        for l in base_labels:
+            nl = dict(l)
+            nl["id"] = _uuid()
+            nl["dataset_id"] = d["id"]
+            nl["last_modified_by"] = user["email"]
+            nl["last_modification_date"] = _now()
+            nl["modified"] = False
+            new_labels.append(nl)
+        if new_labels:
+            await db.labels.insert_many(new_labels)
+    else:
+        await db.labels.insert_many(_make_labels(d["id"], all_complete=False))
+
+    await log_audit("dataset", d["id"], "CREATED", user["email"],
+                    new_value=f"{d['dataset_name']} [{body.creation_mode}]",
+                    justification=d["changelog_summary"])
+    d.pop("_id", None)
+    return d
+
+
+@api.post("/datasets/{ds_id}/technical-validate")
+async def technical_validate(ds_id: str, user: dict = Depends(current_user)):
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["lifecycle_state"] in ("RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"):
+        raise HTTPException(400, "Dataset is locked")
+    labels = await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+    errors = []
+    for l in labels:
+        if l.get("confidence_status") == "EMPTY":
+            errors.append(f"{l['label_name']}: confidence is EMPTY")
+        if l.get("regulatory_relevance") == "YES" and not l.get("change_justification"):
+            errors.append(f"{l['label_name']}: regulatory-relevant label missing change justification")
+        if l.get("regulatory_relevance") == "YES" and l.get("parametrizable_in_customer") == "YES" \
+                and not l.get("parametrizable_override_justification"):
+            errors.append(f"{l['label_name']}: regulatory + customer-parametrizable requires override justification")
+    if d["deployment_context"] == "PRODUCTION":
+        undoc = [l["label_name"] for l in labels if l.get("regulatory_relevance") == "YES" and l.get("confidence_status") != "DOCUMENTED"]
+        for name in undoc:
+            errors.append(f"{name}: PRODUCTION context requires regulatory-relevant labels DOCUMENTED")
+
+    status = "PASS" if not errors else "FAIL"
+    await db.datasets.update_one(
+        {"id": ds_id},
+        {"$set": {"technical_validation_status": status, "technical_validation_summary": errors, "last_modified_date": _now()}},
+    )
+    await log_audit("dataset", ds_id, f"TECH_VALIDATION_{status}", user["email"], new_value=status)
+    return {"status": status, "errors": errors}
+
+
+@api.post("/datasets/{ds_id}/submit-approval")
+async def submit_approval(ds_id: str, user: dict = Depends(current_user)):
+    require_role(user, "Calibration_Engineer", "Post_Sales_Engineer")
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["lifecycle_state"] != "EDIT":
+        raise HTTPException(400, f"Dataset must be in EDIT state (currently {d['lifecycle_state']})")
+    if d["technical_validation_status"] != "PASS":
+        raise HTTPException(400, "Technical validation must PASS before submission")
+    if not d["changelog_summary"]:
+        raise HTTPException(400, "Changelog summary is required")
+    if not d["review"].get("vnv_report_reference"):
+        # Auto-initialize placeholder — rule says V&V report must be attached; enforce here
+        raise HTTPException(400, "V&V report reference must be attached before submission")
+    await db.datasets.update_one(
+        {"id": ds_id},
+        {"$set": {
+            "lifecycle_state": "UNDER_APPROVAL",
+            "review.technical": "PENDING",
+            "review.project_configuration": "PENDING",
+            "review.regulatory": "PENDING",
+            "review.vnv": "PENDING",
+            "last_modified_date": _now(),
+        }},
+    )
+    await log_audit("dataset", ds_id, "EDIT→UNDER_APPROVAL", user["email"], previous_value="EDIT", new_value="UNDER_APPROVAL")
+    return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/attach-vnv")
+async def attach_vnv(ds_id: str, body: dict, user: dict = Depends(current_user)):
+    require_role(user, "Calibration_Engineer", "PD_Verification_Validation_Engineer", "Post_Sales_Engineer")
+    ref = body.get("vnv_report_reference", "")
+    if not ref:
+        raise HTTPException(400, "vnv_report_reference required")
+    await db.datasets.update_one({"id": ds_id}, {"$set": {"review.vnv_report_reference": ref, "last_modified_date": _now()}})
+    await log_audit("dataset", ds_id, "VNV_REPORT_ATTACHED", user["email"], new_value=ref)
+    return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/review")
+async def submit_review(ds_id: str, body: ReviewUpdate, user: dict = Depends(current_user)):
+    role_map = {
+        "technical": ("Calibration_Engineer", "PI_Engineering_Manager"),
+        "project_configuration": ("Configuration_Manager", "PD_Project_Manager"),
+        "regulatory": ("PI_Regulatory_Compliance_Specialist",),
+        "vnv": ("PD_Verification_Validation_Engineer",),
+    }
+    require_role(user, *role_map[body.domain])
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["lifecycle_state"] != "UNDER_APPROVAL":
+        raise HTTPException(400, "Dataset is not UNDER_APPROVAL")
+
+    patch = {
+        f"review.{body.domain}": body.status,
+        f"review.{body.domain}_comments": body.comments or "",
+        "last_modified_date": _now(),
+    }
+    if body.domain == "vnv" and body.vnv_report_reference:
+        patch["review.vnv_report_reference"] = body.vnv_report_reference
+
+    # Rework -> back to EDIT and reset statuses
+    if body.status == "REWORK_REQUIRED":
+        patch["lifecycle_state"] = "EDIT"
+        for k in ("technical", "project_configuration", "regulatory", "vnv"):
+            patch[f"review.{k}"] = "PENDING"
+        await db.datasets.update_one({"id": ds_id}, {"$set": patch})
+        await log_audit("dataset", ds_id, f"REWORK_{body.domain.upper()}", user["email"],
+                        justification=body.comments or "")
+        return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+    await db.datasets.update_one({"id": ds_id}, {"$set": patch})
+    await log_audit("dataset", ds_id, f"REVIEW_{body.domain.upper()}_{body.status}",
+                    user["email"], new_value=body.status, justification=body.comments or "")
+    return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/approve")
+async def approve_dataset(ds_id: str, user: dict = Depends(current_user)):
+    require_role(user, "PI_Engineering_Manager")
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["lifecycle_state"] != "UNDER_APPROVAL":
+        raise HTTPException(400, "Dataset must be UNDER_APPROVAL")
+    r = d["review"]
+    for k in ("technical", "project_configuration", "regulatory", "vnv"):
+        if r.get(k) != "ACCEPTED":
+            raise HTTPException(400, f"Review '{k}' is not ACCEPTED")
+    await db.datasets.update_one({"id": ds_id}, {"$set": {
+        "lifecycle_state": "APPROVED",
+        "review.approval_decision": "APPROVED",
+        "review.approval_date": _now(),
+        "review.approved_by": user["email"],
+        "last_modified_date": _now(),
+    }})
+    await log_audit("dataset", ds_id, "UNDER_APPROVAL→APPROVED", user["email"],
+                    previous_value="UNDER_APPROVAL", new_value="APPROVED")
+    return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/release-select")
+async def release_select(ds_id: str, body: ReleaseSelectBody, user: dict = Depends(current_user)):
+    require_role(user, "Configuration_Manager")
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["lifecycle_state"] != "APPROVED":
+        raise HTTPException(400, "Only APPROVED datasets can be selected for release")
+    await db.datasets.update_one({"id": ds_id}, {"$set": {
+        "lifecycle_state": "RELEASE_CANDIDATE",
+        "release_candidate_flag": True,
+        "locked": True,
+        "selected_deployment_context": body.selected_deployment_context,
+        "selected_variant_id": body.selected_variant_id,
+        "selection_justification": body.selection_justification,
+        "selected_by": user["email"],
+        "selection_date": _now(),
+        "last_modified_date": _now(),
+    }})
+    await log_audit("dataset", ds_id, "APPROVED→RELEASE_CANDIDATE", user["email"],
+                    previous_value="APPROVED", new_value="RELEASE_CANDIDATE",
+                    justification=body.selection_justification)
+    return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/deprecate")
+async def deprecate_dataset(ds_id: str, body: DeprecateBody, user: dict = Depends(current_user)):
+    require_role(user, "Configuration_Manager")
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Not found")
+    if d["lifecycle_state"] not in ("RELEASED", "RELEASE_CANDIDATE", "APPROVED"):
+        raise HTTPException(400, "Can only deprecate APPROVED / RELEASE_CANDIDATE / RELEASED datasets")
+    if not body.justification:
+        raise HTTPException(400, "Justification is required")
+    if body.replacement_dataset_id:
+        rep = await db.datasets.find_one({"id": body.replacement_dataset_id}, {"_id": 0})
+        if not rep:
+            raise HTTPException(404, "Replacement dataset not found")
+    await db.datasets.update_one({"id": ds_id}, {"$set": {
+        "lifecycle_state": "DEPRECATED",
+        "locked": True,
+        "deprecation_justification": body.justification,
+        "deprecation_replacement_id": body.replacement_dataset_id,
+        "deprecation_date": _now(),
+        "last_modified_date": _now(),
+    }})
+    await log_audit("dataset", ds_id, "DEPRECATED", user["email"],
+                    previous_value=d["lifecycle_state"], new_value="DEPRECATED",
+                    justification=body.justification)
+    return await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/derive-post-sales")
+async def derive_post_sales(ds_id: str, body: DeriveBody, user: dict = Depends(current_user)):
+    require_role(user, "Post_Sales_Engineer", "Calibration_Engineer")
+    base = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not base:
+        raise HTTPException(404, "Not found")
+    if base["lifecycle_state"] != "RELEASED":
+        raise HTTPException(400, "Post-sales derivation requires baseline in RELEASED state")
+    ctx = "VIN_SPECIFIC" if body.vin else "POST_SALES"
+    new_id = _uuid()
+    new_ds = dict(base)
+    new_ds["id"] = new_id
+    new_ds["dataset_name"] = body.dataset_name
+    new_ds["lifecycle_state"] = "EDIT"
+    new_ds["creation_mode"] = "REUSE_BASELINE"
+    new_ds["deployment_context"] = ctx
+    new_ds["variant_id"] = body.variant_id
+    new_ds["vin"] = body.vin
+    new_ds["baseline_dataset_id"] = ds_id
+    new_ds["author"] = user["email"]
+    new_ds["creation_date"] = _now()
+    new_ds["last_modified_date"] = _now()
+    new_ds["technical_validation_status"] = "NOT_RUN"
+    new_ds["technical_validation_summary"] = []
+    new_ds["locked"] = False
+    new_ds["deployed"] = False
+    new_ds["release_candidate_flag"] = False
+    new_ds["changelog_summary"] = body.changelog_summary or f"Derived post-sales from {base['dataset_name']}"
+    new_ds["review"] = {
+        "technical": "PENDING", "project_configuration": "PENDING",
+        "regulatory": "PENDING", "vnv": "PENDING",
+        "technical_comments": "", "project_configuration_comments": "",
+        "regulatory_comments": "", "vnv_comments": "",
+        "vnv_report_reference": None,
+        "approval_decision": None, "approval_date": None, "approved_by": None,
+    }
+    new_ds["selected_deployment_context"] = None
+    new_ds["selected_variant_id"] = None
+    new_ds["selection_justification"] = None
+    new_ds["selected_by"] = None
+    new_ds["selection_date"] = None
+    new_ds["deprecation_justification"] = None
+    new_ds["deprecation_replacement_id"] = None
+    new_ds["deprecation_date"] = None
+    new_ds["is_post_sales_derived"] = True
+    new_ds.pop("_id", None)
+    await db.datasets.insert_one(new_ds)
+
+    base_labels = await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+    new_labels = []
+    for l in base_labels:
+        nl = dict(l)
+        nl["id"] = _uuid()
+        nl["dataset_id"] = new_id
+        nl["modified"] = False
+        new_labels.append(nl)
+    if new_labels:
+        await db.labels.insert_many(new_labels)
+    await log_audit("dataset", new_id, "DERIVED_POST_SALES", user["email"],
+                    previous_value=base["id"], new_value=new_id,
+                    justification=new_ds["changelog_summary"])
+    new_ds.pop("_id", None)
+    return new_ds
+
+
+# =====================================================
+#                    LABELS
+# =====================================================
+@api.get("/datasets/{ds_id}/labels")
+async def list_labels(ds_id: str, user: dict = Depends(current_user)):
+    return await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+
+
+def _enforce_label_rules(dataset: dict, label: dict, patch: dict):
+    merged = {**label, **{k: v for k, v in patch.items() if v is not None}}
+    # regulatory + parametrizable requires override justification
+    if merged.get("regulatory_relevance") == "YES" and merged.get("parametrizable_in_customer") == "YES" \
+            and not merged.get("parametrizable_override_justification"):
+        raise HTTPException(400, f"{label['label_name']}: regulatory + parametrizable-in-customer requires override justification")
+    # regulatory change requires justification
+    if merged.get("regulatory_relevance") == "YES" and "current_value" in patch and not merged.get("change_justification"):
+        raise HTTPException(400, f"{label['label_name']}: regulatory-relevant label change requires justification")
+    # post-sales derived dataset only allows editing parametrizable labels
+    if dataset.get("is_post_sales_derived") and dataset.get("baseline_dataset_id"):
+        if "current_value" in patch and label.get("parametrizable_in_customer") != "YES":
+            raise HTTPException(400, f"{label['label_name']}: not parametrizable_in_customer — cannot be modified in post-sales derived dataset")
+    return merged
+
+
+@api.patch("/datasets/{ds_id}/labels/{label_id}")
+async def update_label(ds_id: str, label_id: str, body: LabelUpdate, user: dict = Depends(current_user)):
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    if d["lifecycle_state"] in ("RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"):
+        raise HTTPException(400, f"Dataset is {d['lifecycle_state']} and read-only. Derive a new dataset to modify.")
+    label = await db.labels.find_one({"id": label_id, "dataset_id": ds_id}, {"_id": 0})
+    if not label:
+        raise HTTPException(404, "Label not found")
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        return label
+    _enforce_label_rules(d, label, patch)
+    patch["last_modified_by"] = user["email"]
+    patch["last_modification_date"] = _now()
+    patch["modified"] = True
+    await db.labels.update_one({"id": label_id}, {"$set": patch})
+    await db.datasets.update_one({"id": ds_id}, {"$set": {"last_modified_date": _now()}})
+    await log_audit("label", label_id, "LABEL_UPDATED", user["email"],
+                    previous_value=label.get("current_value"),
+                    new_value=patch.get("current_value", label.get("current_value")),
+                    justification=body.change_justification or "")
+    return await db.labels.find_one({"id": label_id}, {"_id": 0})
+
+
+@api.post("/datasets/{ds_id}/labels/mass-update")
+async def mass_update(ds_id: str, body: LabelMassUpdate, user: dict = Depends(current_user)):
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    if d["lifecycle_state"] in ("RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"):
+        raise HTTPException(400, "Dataset is read-only")
+    updated = 0
+    patch_src = {k: v for k, v in body.patch.model_dump().items() if v is not None}
+    if not patch_src:
+        return {"updated": 0}
+    for lid in body.label_ids:
+        label = await db.labels.find_one({"id": lid, "dataset_id": ds_id}, {"_id": 0})
+        if not label:
+            continue
+        try:
+            _enforce_label_rules(d, label, patch_src)
+        except HTTPException:
+            continue
+        patch = dict(patch_src)
+        patch["last_modified_by"] = user["email"]
+        patch["last_modification_date"] = _now()
+        patch["modified"] = True
+        await db.labels.update_one({"id": lid}, {"$set": patch})
+        updated += 1
+    await db.datasets.update_one({"id": ds_id}, {"$set": {"last_modified_date": _now()}})
+    await log_audit("dataset", ds_id, "LABELS_MASS_UPDATED", user["email"], new_value=f"{updated} labels")
+    return {"updated": updated}
+
+
+# =====================================================
+#                 VEHICLE SW IDs
+# =====================================================
+@api.get("/vehicle-sw-ids")
+async def list_vehicle_sw_ids(
+    software_release_id: Optional[str] = None,
+    dataset_id: Optional[str] = None,
+    user: dict = Depends(current_user),
+):
+    filt = {}
+    if software_release_id:
+        filt["software_release_id"] = software_release_id
+    if dataset_id:
+        filt["dataset_id"] = dataset_id
+    return await db.vehicle_sw_ids.find(filt, {"_id": 0}).to_list(2000)
+
+
+@api.post("/vehicle-sw-ids")
+async def create_vehicle_sw_id(body: VehicleSWIDCreate, user: dict = Depends(current_user)):
+    require_role(user, "DM_Administrator")
+    d = await db.datasets.find_one({"id": body.dataset_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    if d["lifecycle_state"] not in ("RELEASE_CANDIDATE", "RELEASED"):
+        raise HTTPException(400, "Only RELEASE_CANDIDATE or RELEASED datasets can be assigned to vehicles")
+    vs = {
+        "id": _uuid(),
+        "software_release_id": d["software_release_id"],
+        "dataset_id": d["id"],
+        "variant_id": body.variant_id or d.get("selected_variant_id") or d.get("variant_id"),
+        "vin": body.vin or d.get("vin"),
+        "manufacturing_order_reference": body.manufacturing_order_reference,
+        "service_case_reference": body.service_case_reference,
+        "creation_date": _now(),
+        "created_by": user["email"],
+    }
+    await db.vehicle_sw_ids.insert_one(vs)
+    # First assignment -> RELEASED
+    if d["lifecycle_state"] == "RELEASE_CANDIDATE":
+        await db.datasets.update_one({"id": d["id"]}, {"$set": {
+            "lifecycle_state": "RELEASED",
+            "deployed": True,
+            "last_modified_date": _now(),
+        }})
+        await log_audit("dataset", d["id"], "RELEASE_CANDIDATE→RELEASED", user["email"],
+                        previous_value="RELEASE_CANDIDATE", new_value="RELEASED")
+    await log_audit("vehicle_sw_id", vs["id"], "CREATED", user["email"],
+                    new_value=f"dataset={d['dataset_name']}, vin={vs['vin']}")
+    vs.pop("_id", None)
+    return vs
+
+
+# =====================================================
+#                 AUDIT LOG
+# =====================================================
+@api.get("/audit-log")
+async def list_audit(
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    limit: int = 200,
+    user: dict = Depends(current_user),
+):
+    filt = {}
+    if entity_type:
+        filt["entity_type"] = entity_type
+    if entity_id:
+        filt["entity_id"] = entity_id
+    return await db.audit_log.find(filt, {"_id": 0}).sort("date", -1).to_list(min(limit, 1000))
+
+
+# =====================================================
+#             DASHBOARD & TRACEABILITY
+# =====================================================
+@api.get("/dashboard/stats")
+async def dashboard_stats(user: dict = Depends(current_user)):
+    total_sr = await db.software_releases.count_documents({})
+    valid_sr = await db.software_releases.count_documents({"status": "VALID_FOR_CALIBRATION"})
+    states = ["EDIT", "UNDER_APPROVAL", "APPROVED", "RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"]
+    by_state = {}
+    for s in states:
+        by_state[s] = await db.datasets.count_documents({"lifecycle_state": s})
+    pending_reviews = await db.datasets.count_documents({"lifecycle_state": "UNDER_APPROVAL"})
+    release_candidates = by_state["RELEASE_CANDIDATE"]
+    deployed = await db.datasets.count_documents({"deployed": True})
+    vehicle_sw_ids = await db.vehicle_sw_ids.count_documents({})
+    recent_audit = await db.audit_log.find({}, {"_id": 0}).sort("date", -1).to_list(8)
+    return {
+        "software_releases_total": total_sr,
+        "software_releases_valid": valid_sr,
+        "datasets_by_state": by_state,
+        "pending_reviews": pending_reviews,
+        "release_candidates": release_candidates,
+        "deployed_datasets": deployed,
+        "vehicle_sw_ids": vehicle_sw_ids,
+        "recent_audit": recent_audit,
+    }
+
+
+@api.get("/traceability")
+async def traceability(user: dict = Depends(current_user)):
+    releases = await db.software_releases.find({}, {"_id": 0}).to_list(1000)
+    datasets = await db.datasets.find({}, {"_id": 0}).to_list(2000)
+    vs_ids = await db.vehicle_sw_ids.find({}, {"_id": 0}).to_list(2000)
+    return {"software_releases": releases, "datasets": datasets, "vehicle_sw_ids": vs_ids}
+
+
+@api.get("/datasets/{ds_id}/compare/{other_id}")
+async def compare_datasets(ds_id: str, other_id: str, user: dict = Depends(current_user)):
+    a_labels = await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+    b_labels = await db.labels.find({"dataset_id": other_id}, {"_id": 0}).to_list(10000)
+    a_map = {l["label_name"]: l for l in a_labels}
+    b_map = {l["label_name"]: l for l in b_labels}
+    all_names = sorted(set(a_map) | set(b_map))
+    diffs = []
+    for name in all_names:
+        la = a_map.get(name)
+        lb = b_map.get(name)
+        if la and lb:
+            if la.get("current_value") != lb.get("current_value"):
+                diffs.append({
+                    "label_name": name,
+                    "a_value": la.get("current_value"),
+                    "b_value": lb.get("current_value"),
+                    "unit": la.get("unit") or lb.get("unit"),
+                    "change_type": "CHANGED",
+                })
+        elif la and not lb:
+            diffs.append({"label_name": name, "a_value": la.get("current_value"), "b_value": None, "change_type": "REMOVED"})
+        elif lb and not la:
+            diffs.append({"label_name": name, "a_value": None, "b_value": lb.get("current_value"), "change_type": "ADDED"})
+    return {"diffs": diffs, "total_labels_a": len(a_labels), "total_labels_b": len(b_labels)}
+
+
+# =====================================================
+#                 ADMIN
+# =====================================================
+@api.post("/seed")
+async def reseed(user: dict = Depends(current_user)):
+    stats = await seed_all(db)
+    return {"ok": True, **stats}
+
+
+# =====================================================
+app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
