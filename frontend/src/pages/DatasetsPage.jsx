@@ -1,17 +1,232 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
 import { LIFECYCLE_STATES, DEPLOYMENT_CONTEXTS, CREATION_MODES, LifecycleBadge, fmtDate } from "../lib/constants";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
-import { Textarea } from "../components/ui/textarea";
-import { Search, Plus, Shield, Lock, CheckCircle2 } from "lucide-react";
+import { Label } from "../components/ui/label";
+import { Search, Plus, Lock, ClipboardList, Download, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
+/* ── Calibration Change Log panel ─────────────────────────────────────────── */
+function ChangeLogPanel({ datasets, sr }) {
+  const [log, setLog] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filterDs, setFilterDs] = useState("ALL");
+  const [filterAction, setFilterAction] = useState("ALL");
+  const [expanded, setExpanded] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/audit-log", { params: { limit: 200 } });
+      // keep only calibration-relevant actions
+      const relevant = data.filter((e) =>
+        ["dataset", "label"].includes(e.entity_type)
+      );
+      setLog(relevant);
+    } catch {
+      toast.error("Could not load change log");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const dsMap = Object.fromEntries(datasets.map((d) => [d.id, d.dataset_name]));
+
+  const actions = [...new Set(log.map((e) => e.action))].sort();
+
+  const filtered = log.filter((e) => {
+    if (filterDs !== "ALL" && e.entity_id !== filterDs && !datasets.find((d) => d.id === filterDs && e.entity_id === filterDs)) {
+      // for label entries, entity_id is label id — we can't filter by dataset easily without extra data
+      // so for label rows just show all when a dataset filter is active only if entity_type=dataset
+      if (e.entity_type === "label") return filterDs === "ALL";
+      return e.entity_id === filterDs;
+    }
+    if (filterAction !== "ALL" && e.action !== filterAction) return false;
+    return true;
+  });
+
+  const exportCsv = () => {
+    const header = ["Date", "Entity Type", "Entity ID", "Action", "Author", "Previous Value", "New Value", "Justification"];
+    const rows = filtered.map((e) => [
+      e.date, e.entity_type, e.entity_id, e.action,
+      e.author, e.previous_value ?? "", e.new_value ?? "", e.justification ?? "",
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `calibration_change_log_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const ACTION_COLOR = {
+    CREATED: { bg: "#DFF6DD", color: "#1E6B1E", border: "#82C882" },
+    LABEL_UPDATED: { bg: "#DDEEFF", color: "#004578", border: "#7EB3E0" },
+    LABELS_MASS_UPDATED: { bg: "#DDEEFF", color: "#004578", border: "#7EB3E0" },
+    DEPRECATED: { bg: "#FDE7E9", color: "#8B0000", border: "#F4ACAC" },
+    SEED_DATA_LOADED: { bg: "#F3F3F3", color: "#605E5C", border: "#C8C8C8" },
+  };
+  const getActionStyle = (action) => {
+    for (const key of Object.keys(ACTION_COLOR)) {
+      if (action.includes(key)) return ACTION_COLOR[key];
+    }
+    return { bg: "#FFF4CE", color: "#7A5C00", border: "#F0D060" };
+  };
+
+  return (
+    <div className="panel" style={{ overflow: "hidden" }}>
+      {/* Panel header — clickable to collapse */}
+      <div
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 12px", background: "#F0F0F0", borderBottom: "1px solid #C8C8C8",
+          cursor: "pointer", userSelect: "none",
+        }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          <ClipboardList size={13} style={{ color: "#2B579A" }} />
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#212121" }}>
+            Calibration Change Log
+          </span>
+          <span style={{
+            fontSize: 10, fontFamily: "monospace", background: "#2B579A", color: "#fff",
+            padding: "0 6px", marginLeft: 4,
+          }}>{filtered.length}</span>
+          <span style={{ fontSize: 10, color: "#8B0000", fontWeight: 600, marginLeft: 8 }}>
+            ⚠ Legal requirement — all calibration changes are recorded
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+          <button className="ms-btn" style={{ height: 24, padding: "0 8px", fontSize: 11 }} onClick={load} title="Refresh">
+            <RefreshCw size={11} /> Refresh
+          </button>
+          <button className="ms-btn" style={{ height: 24, padding: "0 8px", fontSize: 11 }} onClick={exportCsv} title="Export CSV">
+            <Download size={11} /> Export CSV
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <>
+          {/* Filters */}
+          <div style={{
+            display: "flex", gap: 10, padding: "8px 12px",
+            background: "#F8F8F8", borderBottom: "1px solid #E0E0E0", alignItems: "flex-end",
+          }}>
+            <div>
+              <div className="tiny-label" style={{ marginBottom: 2 }}>Dataset</div>
+              <Select value={filterDs} onValueChange={setFilterDs}>
+                <SelectTrigger style={{ height: 24, fontSize: 11, width: 220 }}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All datasets</SelectItem>
+                  {datasets.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.dataset_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="tiny-label" style={{ marginBottom: 2 }}>Action type</div>
+              <Select value={filterAction} onValueChange={setFilterAction}>
+                <SelectTrigger style={{ height: 24, fontSize: 11, width: 200 }}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All actions</SelectItem>
+                  {actions.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div style={{ marginLeft: "auto", fontSize: 10, color: "#605E5C", alignSelf: "center" }}>
+              Showing {filtered.length} of {log.length} entries
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ maxHeight: 320, overflowY: "auto" }}>
+            {loading ? (
+              <div style={{ padding: "20px", textAlign: "center", fontSize: 11, color: "#8A8886" }}>Loading…</div>
+            ) : (
+              <table className="xl-table">
+                <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
+                  <tr>
+                    <th style={{ width: 140 }}>Date / Time</th>
+                    <th style={{ width: 80 }}>Type</th>
+                    <th>Action</th>
+                    <th>Dataset / Entity</th>
+                    <th>Author</th>
+                    <th>Previous</th>
+                    <th>New value</th>
+                    <th>Justification</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((e) => {
+                    const st = getActionStyle(e.action);
+                    const dsName = dsMap[e.entity_id] || e.entity_id?.slice(0, 8) + "…";
+                    return (
+                      <tr key={e.id}>
+                        <td style={{ fontFamily: "monospace", fontSize: 10, color: "#605E5C", whiteSpace: "nowrap" }}>
+                          {fmtDate(e.date)}
+                        </td>
+                        <td>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                            background: e.entity_type === "label" ? "#EDE7F6" : "#F0F0F0",
+                            color: e.entity_type === "label" ? "#4A148C" : "#444",
+                            border: `1px solid ${e.entity_type === "label" ? "#B39DDB" : "#C8C8C8"}`,
+                            padding: "1px 5px",
+                          }}>
+                            {e.entity_type}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, fontFamily: "monospace",
+                            background: st.bg, color: st.color, border: `1px solid ${st.border}`,
+                            padding: "1px 5px",
+                          }}>
+                            {e.action}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11, fontFamily: "monospace" }}>
+                          {e.entity_type === "dataset"
+                            ? <Link to={`/datasets/${e.entity_id}`} style={{ color: "#2B579A" }}>{dsName}</Link>
+                            : <span style={{ color: "#605E5C" }}>{e.entity_id?.slice(0, 12)}…</span>
+                          }
+                        </td>
+                        <td style={{ fontSize: 11 }}>{e.author}</td>
+                        <td style={{ fontSize: 10, fontFamily: "monospace", color: "#8A8886", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.previous_value ?? "—"}
+                        </td>
+                        <td style={{ fontSize: 10, fontFamily: "monospace", color: "#212121", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.new_value ?? "—"}
+                        </td>
+                        <td style={{ fontSize: 10, color: "#605E5C", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.justification || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={8} style={{ textAlign: "center", color: "#8A8886", padding: "20px 0" }}>No entries match filters</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Main page ─────────────────────────────────────────────────────────────── */
 export default function DatasetsPage() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -55,7 +270,6 @@ export default function DatasetsPage() {
   }, [q, state, context, mode, swr]);
 
   useEffect(() => {
-    // sync from url
     const urlState = params.get("state");
     if (urlState && urlState !== state) setState(urlState);
     /* eslint-disable-next-line */
@@ -81,20 +295,20 @@ export default function DatasetsPage() {
   const baselines = items.filter((i) => ["RELEASED", "APPROVED"].includes(i.lifecycle_state));
 
   return (
-    <div className="space-y-6" data-testid="page-datasets">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="page-datasets">
+
+      {/* Page header */}
+      <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <div className="tiny-label">Workflow 2 · Catalogue</div>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>
-            Dataset Catalogue
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">All calibration datasets across software releases.</p>
+          <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>Dataset Catalogue</h1>
+          <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>All calibration datasets across software releases.</p>
         </div>
         <Dialog open={openCreate} onOpenChange={setOpenCreate}>
           <DialogTrigger asChild>
-            <Button disabled={!canCreate} className="bg-slate-900 hover:bg-slate-800" data-testid="btn-new-dataset">
-              <Plus className="w-4 h-4 mr-1.5" /> New dataset
-            </Button>
+            <button disabled={!canCreate} className="ms-btn primary" data-testid="btn-new-dataset">
+              <Plus size={13} /> New dataset
+            </button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -112,7 +326,7 @@ export default function DatasetsPage() {
               </div>
               <div className="col-span-2">
                 <Label className="tiny-label">Dataset name</Label>
-                <Input value={form.dataset_name} onChange={(e) => setForm({ ...form, dataset_name: e.target.value })} className="mt-1.5" data-testid="nds-name" />
+                <input value={form.dataset_name} onChange={(e) => setForm({ ...form, dataset_name: e.target.value })} className="ms-input" style={{ marginTop: 6 }} data-testid="nds-name" />
               </div>
               <div>
                 <Label className="tiny-label">Creation mode</Label>
@@ -130,11 +344,11 @@ export default function DatasetsPage() {
               </div>
               <div>
                 <Label className="tiny-label">Variant ID (optional)</Label>
-                <Input value={form.variant_id} onChange={(e) => setForm({ ...form, variant_id: e.target.value })} className="mt-1.5" />
+                <input value={form.variant_id} onChange={(e) => setForm({ ...form, variant_id: e.target.value })} className="ms-input" style={{ marginTop: 6 }} />
               </div>
               <div>
                 <Label className="tiny-label">VIN (optional)</Label>
-                <Input value={form.vin} onChange={(e) => setForm({ ...form, vin: e.target.value })} className="mt-1.5" />
+                <input value={form.vin} onChange={(e) => setForm({ ...form, vin: e.target.value })} className="ms-input" style={{ marginTop: 6 }} />
               </div>
               <div className="col-span-2">
                 <Label className="tiny-label">Baseline dataset (for REUSE_BASELINE)</Label>
@@ -148,30 +362,30 @@ export default function DatasetsPage() {
               </div>
               <div className="col-span-2">
                 <Label className="tiny-label">Changelog summary</Label>
-                <Textarea value={form.changelog_summary} onChange={(e) => setForm({ ...form, changelog_summary: e.target.value })} className="mt-1.5" rows={3} data-testid="nds-changelog" />
+                <textarea value={form.changelog_summary} onChange={(e) => setForm({ ...form, changelog_summary: e.target.value })} className="ms-input" style={{ marginTop: 6, height: 64, resize: "vertical" }} rows={3} data-testid="nds-changelog" />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpenCreate(false)}>Cancel</Button>
-              <Button className="bg-slate-900 hover:bg-slate-800" onClick={submit} data-testid="nds-create">Create dataset</Button>
+              <button className="ms-btn" onClick={() => setOpenCreate(false)}>Cancel</button>
+              <button className="ms-btn primary" onClick={submit} data-testid="nds-create">Create dataset</button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
       {/* Filters */}
-      <div className="panel p-4 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-        <div className="col-span-2">
-          <Label className="tiny-label">Search</Label>
-          <div className="relative mt-1.5">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" placeholder="Dataset name…" data-testid="ds-search" />
+      <div className="panel" style={{ padding: "10px 12px", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 10, alignItems: "flex-end" }}>
+        <div>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Search</div>
+          <div style={{ position: "relative" }}>
+            <Search size={12} style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", color: "#8A8886" }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} className="ms-input" style={{ paddingLeft: 22 }} placeholder="Dataset name…" data-testid="ds-search" />
           </div>
         </div>
         <div>
-          <Label className="tiny-label">Lifecycle</Label>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Lifecycle</div>
           <Select value={state} onValueChange={setState}>
-            <SelectTrigger className="mt-1.5" data-testid="ds-state-filter"><SelectValue /></SelectTrigger>
+            <SelectTrigger data-testid="ds-state-filter" style={{ height: 24, fontSize: 12 }}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All</SelectItem>
               {LIFECYCLE_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -179,9 +393,9 @@ export default function DatasetsPage() {
           </Select>
         </div>
         <div>
-          <Label className="tiny-label">Context</Label>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Context</div>
           <Select value={context} onValueChange={setContext}>
-            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+            <SelectTrigger style={{ height: 24, fontSize: 12 }}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All</SelectItem>
               {DEPLOYMENT_CONTEXTS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -189,9 +403,19 @@ export default function DatasetsPage() {
           </Select>
         </div>
         <div>
-          <Label className="tiny-label">Release</Label>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Mode</div>
+          <Select value={mode} onValueChange={setMode}>
+            <SelectTrigger style={{ height: 24, fontSize: 12 }}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All</SelectItem>
+              {CREATION_MODES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Release</div>
           <Select value={swr} onValueChange={setSwr}>
-            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+            <SelectTrigger style={{ height: 24, fontSize: 12 }}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All</SelectItem>
               {sr.map((r) => <SelectItem key={r.id} value={r.id}>{r.software_release_identifier}</SelectItem>)}
@@ -200,50 +424,54 @@ export default function DatasetsPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="panel overflow-hidden">
-        <table className="w-full text-sm">
+      {/* Dataset table */}
+      <div className="panel" style={{ overflow: "hidden" }}>
+        <table className="xl-table">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-left">
-              <th className="tiny-label py-3 px-4">Dataset</th>
-              <th className="tiny-label py-3 px-4">State</th>
-              <th className="tiny-label py-3 px-4">SW Release</th>
-              <th className="tiny-label py-3 px-4">Context</th>
-              <th className="tiny-label py-3 px-4">Mode</th>
-              <th className="tiny-label py-3 px-4">Author</th>
-              <th className="tiny-label py-3 px-4">Updated</th>
-              <th />
+            <tr>
+              <th>Dataset</th>
+              <th>State</th>
+              <th>SW Release</th>
+              <th>Context</th>
+              <th>Mode</th>
+              <th>Author</th>
+              <th>Updated</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {items.map((d) => {
               const rel = sr.find((x) => x.id === d.software_release_id);
               return (
-                <tr key={d.id} className="table-row border-b border-slate-100 last:border-0" data-testid={`ds-row-${d.dataset_name}`}>
-                  <td className="py-3 px-4">
-                    <div className="font-medium text-slate-900 flex items-center gap-1.5">
+                <tr key={d.id} data-testid={`ds-row-${d.dataset_name}`}>
+                  <td>
+                    <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
                       {d.dataset_name}
-                      {d.locked && <Lock className="w-3 h-3 text-violet-600" />}
-                      {d.is_post_sales_derived && <span className="text-[9px] font-mono bg-slate-100 text-slate-600 px-1.5 rounded-sm">POST_SALES</span>}
+                      {d.locked && <Lock size={11} style={{ color: "#4A148C" }} />}
+                      {d.is_post_sales_derived && <span style={{ fontSize: 9, fontFamily: "monospace", background: "#F3F3F3", color: "#605E5C", padding: "0 4px" }}>POST_SALES</span>}
                     </div>
-                    {d.baseline_dataset_id && <div className="text-[10px] font-mono text-slate-500 mt-0.5">derived from baseline</div>}
+                    {d.baseline_dataset_id && <div style={{ fontSize: 10, fontFamily: "monospace", color: "#8A8886", marginTop: 1 }}>derived from baseline</div>}
                   </td>
-                  <td className="py-3 px-4"><LifecycleBadge state={d.lifecycle_state} /></td>
-                  <td className="py-3 px-4 font-mono text-xs text-slate-700">{rel?.software_release_identifier || "—"}</td>
-                  <td className="py-3 px-4 text-xs font-mono text-slate-700">{d.deployment_context}</td>
-                  <td className="py-3 px-4 text-xs font-mono text-slate-500">{d.creation_mode}</td>
-                  <td className="py-3 px-4 text-xs text-slate-600">{d.author}</td>
-                  <td className="py-3 px-4 text-xs text-slate-500">{fmtDate(d.last_modified_date)}</td>
-                  <td className="py-3 px-4 text-right">
-                    <Link to={`/datasets/${d.id}`} className="text-xs text-slate-900 font-medium hover:underline" data-testid={`ds-open-${d.dataset_name}`}>Open →</Link>
+                  <td><LifecycleBadge state={d.lifecycle_state} /></td>
+                  <td style={{ fontFamily: "monospace", fontSize: 11 }}>{rel?.software_release_identifier || "—"}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 11 }}>{d.deployment_context}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 11, color: "#605E5C" }}>{d.creation_mode}</td>
+                  <td style={{ fontSize: 11 }}>{d.author}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 10, color: "#8A8886" }}>{fmtDate(d.last_modified_date)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#2B579A", fontWeight: 600 }} data-testid={`ds-open-${d.dataset_name}`}>Open →</Link>
                   </td>
                 </tr>
               );
             })}
-            {items.length === 0 && <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-500">No datasets match filters</td></tr>}
+            {items.length === 0 && <tr><td colSpan={8} style={{ textAlign: "center", color: "#8A8886", padding: "20px 0" }}>No datasets match filters</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {/* ── Calibration Change Log ─────────────────────────────────────────── */}
+      <ChangeLogPanel datasets={items} sr={sr} />
+
     </div>
   );
 }

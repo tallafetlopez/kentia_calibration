@@ -1,142 +1,202 @@
-import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import React, { useState } from "react";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import {
-  LayoutDashboard,
-  CircuitBoard,
-  Database,
-  ClipboardCheck,
-  Rocket,
-  Car,
-  GitBranch,
-  Settings2,
-  LogOut,
-  ChevronDown,
-  UserCircle2,
+  LayoutDashboard, CircuitBoard, Database, ClipboardCheck,
+  Rocket, Car, GitBranch, Settings2, LogOut, ChevronDown,
+  UserCircle2, Plus, Search, RefreshCw, Home,
 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuRadioGroup, DropdownMenuRadioItem,
 } from "./ui/dropdown-menu";
 import { Toaster } from "./ui/sonner";
 
-const NAV = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/software-releases", label: "Software Releases", icon: CircuitBoard },
-  { to: "/datasets", label: "Dataset Catalogue", icon: Database },
-  { to: "/review-center", label: "Review Center", icon: ClipboardCheck },
-  { to: "/release-center", label: "Release Center", icon: Rocket },
-  { to: "/vehicle-assignment", label: "Vehicle Assignment", icon: Car },
-  { to: "/traceability", label: "Traceability", icon: GitBranch },
-  { to: "/admin", label: "Admin", icon: Settings2 },
+/* ── Ribbon tab definitions ─────────────────────────────────────────────── */
+const TABS = [
+  {
+    id: "home",
+    label: "Home",
+    groups: [
+      {
+        label: "Navigate",
+        items: [
+          { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+          { to: "/software-releases", label: "SW Releases", icon: CircuitBoard },
+          { to: "/datasets", label: "Datasets", icon: Database },
+        ],
+      },
+      {
+        label: "Workflow",
+        items: [
+          { to: "/review-center", label: "Review", icon: ClipboardCheck },
+          { to: "/release-center", label: "Release", icon: Rocket },
+          { to: "/vehicle-assignment", label: "Vehicles", icon: Car },
+        ],
+      },
+      {
+        label: "Tools",
+        items: [
+          { to: "/traceability", label: "Traceability", icon: GitBranch },
+          { to: "/admin", label: "Admin", icon: Settings2 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "view",
+    label: "View",
+    groups: [
+      {
+        label: "Pages",
+        items: [
+          { to: "/datasets", label: "Catalogue", icon: Database },
+          { to: "/traceability", label: "Traceability", icon: GitBranch },
+        ],
+      },
+    ],
+  },
+  {
+    id: "tools",
+    label: "Tools",
+    groups: [
+      {
+        label: "Administration",
+        items: [
+          { to: "/admin", label: "Admin Panel", icon: Settings2 },
+        ],
+      },
+    ],
+  },
 ];
+
+function RibbonBtn({ to, label, icon: Icon, end }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) => `rb-btn${isActive ? " active" : ""}`}
+    >
+      <Icon size={20} strokeWidth={1.5} />
+      <span>{label}</span>
+    </NavLink>
+  );
+}
 
 export default function AppLayout({ children }) {
   const { user, logout, switchRole } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState("home");
+
+  const tab = TABS.find((t) => t.id === activeTab) || TABS[0];
+
+  /* derive current page label for status bar */
+  const currentNav = TABS.flatMap((t) => t.groups.flatMap((g) => g.items))
+    .find((i) => i.end ? location.pathname === i.to : location.pathname.startsWith(i.to));
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* Sidebar */}
-      <aside className="w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col sticky top-0 h-screen">
-        <div className="px-5 pt-6 pb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bar-gradient flex items-center justify-center">
-              <span className="text-white font-bold text-sm tracking-tighter">H</span>
-            </div>
-            <div>
-              <div className="font-semibold text-slate-900 tracking-tight" style={{ fontFamily: "Chivo" }}>
-                HERKO
-              </div>
-              <div className="tiny-label -mt-0.5">Calibration Manager</div>
-            </div>
-          </div>
-        </div>
-        <div className="px-3 tiny-label pt-4 pb-2">Workspace</div>
-        <nav className="px-3 flex-1 space-y-0.5">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-              data-testid={`nav-${n.to.replaceAll("/", "") || "home"}`}
-            >
-              <n.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-              <span>{n.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-slate-200">
-          <div className="tiny-label px-2 pb-2">Active Role</div>
-          <div className="px-2 py-2 rounded-md bg-slate-50 border border-slate-200">
-            <div className="text-[11px] font-mono text-slate-700 truncate">{user?.active_role}</div>
-          </div>
-        </div>
-      </aside>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
 
-      {/* Main */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        {/* Top bar */}
-        <header className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200 px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="tiny-label">ECU</span>
-            <span className="text-sm font-medium text-slate-900" style={{ fontFamily: "Chivo" }}>
-              ECM — Engine Control Module
-            </span>
-            <span className="w-1 h-1 rounded-full bg-slate-300" />
-            <span className="tiny-label">Env</span>
-            <span className="text-xs font-mono text-slate-600">Calibration Data Model</span>
+      {/* ── Ribbon root ─────────────────────────────────────────────────── */}
+      <div className="ribbon-root">
+
+        {/* Title bar */}
+        <div className="ribbon-title-bar">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+              width: 22, height: 22, background: "rgba(255,255,255,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0,
+            }}>H</div>
+            <span className="ribbon-app-name">HERKO Calibration Manager</span>
           </div>
 
+          <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.75 }}>
+            ECM — Engine Control Module
+          </span>
+
+          {/* User menu */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-md hover:bg-slate-100 transition"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "2px 8px", background: "rgba(255,255,255,0.12)",
+                border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer",
+                color: "#fff", fontSize: 11,
+              }}
               data-testid="topbar-user-menu"
             >
-              <UserCircle2 className="w-6 h-6 text-slate-700" strokeWidth={1.5} />
-              <div className="text-left">
-                <div className="text-xs font-medium text-slate-900 leading-tight">{user?.name}</div>
-                <div className="text-[10px] font-mono text-slate-500 leading-tight">{user?.email}</div>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+              <UserCircle2 size={14} strokeWidth={1.5} />
+              <span>{user?.name}</span>
+              <ChevronDown size={11} />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel className="text-xs">Switch active role</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={user?.active_role}
-                onValueChange={(v) => switchRole(v)}
-              >
+            <DropdownMenuContent align="end" style={{ minWidth: 240, fontSize: 12 }}>
+              <DropdownMenuLabel style={{ fontSize: 11 }}>Switch active role</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={user?.active_role} onValueChange={(v) => switchRole(v)}>
                 {(user?.roles || []).map((r) => (
-                  <DropdownMenuRadioItem key={r} value={r} className="text-xs font-mono" data-testid={`switch-role-${r}`}>
+                  <DropdownMenuRadioItem key={r} value={r} style={{ fontSize: 11, fontFamily: "monospace" }} data-testid={`switch-role-${r}`}>
                     {r}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
-                className="text-xs"
+                onClick={() => { logout(); navigate("/login"); }}
+                style={{ fontSize: 11 }}
                 data-testid="topbar-logout"
               >
-                <LogOut className="w-3.5 h-3.5 mr-2" /> Log out
+                <LogOut size={12} style={{ marginRight: 6 }} /> Log out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </header>
+        </div>
 
-        <main className="flex-1 px-8 py-8">{children}</main>
-        <Toaster />
+        {/* Tab strip */}
+        <div className="ribbon-tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`ribbon-tab${activeTab === t.id ? " active" : ""}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* ── Ribbon content (command groups) ─────────────────────────────── */}
+      <div className="ribbon-content">
+        {tab.groups.map((g) => (
+          <div key={g.label} className="ribbon-group">
+            <div className="ribbon-group-buttons">
+              {g.items.map((item) => (
+                <RibbonBtn key={item.to} {...item} />
+              ))}
+            </div>
+            <div className="ribbon-group-label">{g.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Page content ────────────────────────────────────────────────── */}
+      <main className="page-content" style={{ flex: 1 }}>
+        {children}
+      </main>
+
+      {/* ── Status bar ──────────────────────────────────────────────────── */}
+      <div className="ms-statusbar">
+        <span>{currentNav?.label || "HERKO"}</span>
+        <span style={{ opacity: 0.6 }}>|</span>
+        <span style={{ fontFamily: "monospace", fontSize: 10 }}>{user?.active_role}</span>
+        <span style={{ marginLeft: "auto", opacity: 0.7 }}>
+          {user?.email}
+        </span>
+      </div>
+
+      <Toaster position="top-right" />
     </div>
   );
 }

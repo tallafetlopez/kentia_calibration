@@ -886,6 +886,51 @@ async def compare_datasets(ds_id: str, other_id: str, user: dict = Depends(curre
 
 
 # =====================================================
+#          SW RELEASE → DATASET ASSIGNMENT
+# =====================================================
+@api.post("/software-releases/{sr_id}/assign-dataset")
+async def assign_dataset_to_release(sr_id: str, body: dict, user: dict = Depends(current_user)):
+    require_role(user, "DM_Administrator", "Configuration_Manager")
+    sr = await db.software_releases.find_one({"id": sr_id}, {"_id": 0})
+    if not sr:
+        raise HTTPException(404, "Software release not found")
+    dataset_id = body.get("dataset_id")
+    if not dataset_id:
+        raise HTTPException(400, "dataset_id is required")
+    d = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    if d["software_release_id"] != sr_id:
+        raise HTTPException(400, "Dataset does not belong to this software release")
+    if d["lifecycle_state"] not in ("RELEASE_CANDIDATE", "RELEASED"):
+        raise HTTPException(400, "Only RELEASE_CANDIDATE or RELEASED datasets can be assigned")
+    vs = {
+        "id": _uuid(),
+        "software_release_id": sr_id,
+        "dataset_id": dataset_id,
+        "variant_id": body.get("variant_id") or d.get("selected_variant_id") or d.get("variant_id"),
+        "vin": body.get("vin") or d.get("vin"),
+        "manufacturing_order_reference": body.get("manufacturing_order_reference"),
+        "service_case_reference": body.get("service_case_reference"),
+        "creation_date": _now(),
+        "created_by": user["email"],
+    }
+    await db.vehicle_sw_ids.insert_one(vs)
+    if d["lifecycle_state"] == "RELEASE_CANDIDATE":
+        await db.datasets.update_one({"id": dataset_id}, {"$set": {
+            "lifecycle_state": "RELEASED",
+            "deployed": True,
+            "last_modified_date": _now(),
+        }})
+        await log_audit("dataset", dataset_id, "RELEASE_CANDIDATE→RELEASED", user["email"],
+                        previous_value="RELEASE_CANDIDATE", new_value="RELEASED")
+    await log_audit("vehicle_sw_id", vs["id"], "SW_ASSIGNED", user["email"],
+                    new_value=f"sr={sr['software_release_identifier']}, dataset={d['dataset_name']}, vin={vs['vin']}")
+    vs.pop("_id", None)
+    return vs
+
+
+# =====================================================
 #                 ADMIN
 # =====================================================
 @api.post("/seed")
@@ -896,6 +941,16 @@ async def reseed(user: dict = Depends(current_user)):
 
 # =====================================================
 app.include_router(api)
+
+# ── Visualization module (non-destructive extension) ──────────────────────────
+try:
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from visualization.viz_api import viz_router
+    app.include_router(viz_router)
+except ImportError:
+    pass  # visualization deps not installed — app still works normally
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -903,3 +958,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

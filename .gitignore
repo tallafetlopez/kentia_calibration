@@ -48,6 +48,34 @@ dump.rdb
 
 # Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# MongoDB
+.mongodb/
+*.lock
+server.log
+
+# Temporary files
+*.bat
+*.spec
+START_ALL.bat
+HERKO.txt
+calibrationherko.bat
+launcherherko.py
+get_ids.py
+test_visualization.py
+test_result.md
+test_reports/
+kentia_calibration/
+
+# OS
+*.log
 *pyc*
 venv/
 .venv/

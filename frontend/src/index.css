@@ -1,150 +1,379 @@
-@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Office-style design tokens ─────────────────────────────────────────── */
 :root {
-    --font-heading: 'Chivo', system-ui, sans-serif;
-    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --ms-blue:        #2B579A;   /* Office accent blue */
+  --ms-blue-dark:   #1E3F73;
+  --ms-blue-light:  #D6E4F7;
+  --ms-blue-hover:  #3A6BBF;
+  --ms-white:       #FFFFFF;
+  --ms-bg:          #F3F3F3;   /* Office window background */
+  --ms-ribbon-bg:   #F0F0F0;   /* Ribbon tab content area */
+  --ms-ribbon-tab:  #E8E8E8;
+  --ms-border:      #C8C8C8;
+  --ms-border-dark: #A0A0A0;
+  --ms-text:        #212121;
+  --ms-text-muted:  #605E5C;
+  --ms-text-light:  #8A8886;
+  --ms-row-hover:   #EEF3FA;
+  --ms-row-sel:     #CCDDF5;
+  --ms-header-bg:   #F0F0F0;
+
+  /* shadcn/radix overrides → square corners */
+  --radius: 0px;
+  --background: 0 0% 95%;
+  --foreground: 0 0% 13%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 13%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 13%;
+  --primary: 216 57% 39%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 94%;
+  --secondary-foreground: 0 0% 13%;
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 38%;
+  --accent: 216 57% 39%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 78%;
+  --input: 0 0% 78%;
+  --ring: 216 57% 39%;
 }
 
+/* ─── Base ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
-    margin: 0;
-    font-family: var(--font-body);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    background-color: #F8FAFC;
-    color: #0F172A;
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  background: var(--ms-bg);
+  color: var(--ms-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-    letter-spacing: -0.02em;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
-code, pre, .mono {
-    font-family: var(--font-mono);
+/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--ms-bg); }
+::-webkit-scrollbar-thumb { background: var(--ms-border-dark); }
+::-webkit-scrollbar-thumb:hover { background: #888; }
+
+/* ─── Selection ───────────────────────────────────────────────────────────── */
+::selection { background: var(--ms-blue); color: #fff; }
+
+/* ─── Ribbon ──────────────────────────────────────────────────────────────── */
+.ribbon-root {
+  background: var(--ms-blue);
+  border-bottom: 1px solid var(--ms-blue-dark);
+  user-select: none;
 }
 
-@layer base {
-    :root {
-        --background: 210 20% 98%;
-        --foreground: 222 47% 11%;
-        --card: 0 0% 100%;
-        --card-foreground: 222 47% 11%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 222 47% 11%;
-        --primary: 222 47% 11%;
-        --primary-foreground: 0 0% 100%;
-        --secondary: 210 40% 96%;
-        --secondary-foreground: 222 47% 11%;
-        --muted: 210 40% 96%;
-        --muted-foreground: 215 16% 47%;
-        --accent: 217 91% 60%;
-        --accent-foreground: 0 0% 100%;
-        --destructive: 0 84% 60%;
-        --destructive-foreground: 0 0% 100%;
-        --border: 214 32% 91%;
-        --input: 214 32% 91%;
-        --ring: 217 91% 60%;
-        --radius: 0.5rem;
-    }
+.ribbon-title-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px 0;
+  background: var(--ms-blue);
+  color: #fff;
+  min-height: 32px;
 }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+.ribbon-app-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  opacity: 0.95;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-
-/* Selection */
-::selection { background: #0F172A; color: #fff; }
-
-/* Sidebar item */
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: #475569;
-    transition: all 0.15s ease;
-}
-.nav-item:hover { background: #F1F5F9; color: #0F172A; }
-.nav-item.active { background: #0F172A; color: #fff; }
-.nav-item.active svg { color: #fff; }
-
-/* Lifecycle badge */
-.lc-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.125rem 0.625rem;
-    border-radius: 9999px;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    border: 1px solid;
-    font-family: var(--font-mono);
-}
-.lc-EDIT { background: #F1F5F9; color: #334155; border-color: #E2E8F0; }
-.lc-UNDER_APPROVAL { background: #FFFBEB; color: #B45309; border-color: #FDE68A; }
-.lc-APPROVED { background: #ECFDF5; color: #047857; border-color: #A7F3D0; }
-.lc-RELEASE_CANDIDATE { background: #F5F3FF; color: #6D28D9; border-color: #DDD6FE; }
-.lc-RELEASED { background: #EFF6FF; color: #1D4ED8; border-color: #BFDBFE; }
-.lc-DEPRECATED { background: #FEF2F2; color: #B91C1C; border-color: #FECACA; }
-
-/* Decorative gradient bar */
-.bar-gradient {
-    background: linear-gradient(90deg, #0F172A 0%, #1E293B 50%, #334155 100%);
+.ribbon-tabs {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 4px;
+  background: var(--ms-blue);
+  gap: 1px;
 }
 
-/* Fine dotted grid bg (used on dashboard hero) */
-.dot-grid {
-    background-image: radial-gradient(#E2E8F0 1px, transparent 1px);
-    background-size: 22px 22px;
+.ribbon-tab {
+  padding: 5px 14px 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.88);
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+  position: relative;
+  top: 1px;
+}
+.ribbon-tab:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+.ribbon-tab.active {
+  background: var(--ms-ribbon-bg);
+  color: var(--ms-text);
+  border-color: var(--ms-border);
+  border-bottom-color: var(--ms-ribbon-bg);
+  font-weight: 600;
 }
 
-/* subtle card */
+.ribbon-content {
+  background: var(--ms-ribbon-bg);
+  border-bottom: 1px solid var(--ms-border);
+  display: flex;
+  align-items: stretch;
+  min-height: 68px;
+  padding: 4px 8px;
+  gap: 0;
+}
+
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 8px;
+  border-right: 1px solid var(--ms-border);
+  min-width: 60px;
+}
+.ribbon-group:last-child { border-right: none; }
+
+.ribbon-group-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  padding-top: 2px;
+}
+
+.ribbon-group-label {
+  font-size: 10px;
+  color: var(--ms-text-muted);
+  margin-top: auto;
+  padding-top: 2px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ─── Ribbon buttons ──────────────────────────────────────────────────────── */
+.rb-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 8px;
+  min-width: 44px;
+  height: 52px;
+  font-size: 11px;
+  font-family: 'Segoe UI', sans-serif;
+  color: var(--ms-text);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+  line-height: 1.2;
+}
+.rb-btn:hover {
+  background: var(--ms-blue-light);
+  border-color: var(--ms-blue);
+  color: var(--ms-text);
+}
+.rb-btn.active {
+  background: var(--ms-blue-light);
+  border-color: var(--ms-blue);
+}
+.rb-btn svg { flex-shrink: 0; }
+
+.rb-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  height: 22px;
+  font-size: 11px;
+  font-family: 'Segoe UI', sans-serif;
+  color: var(--ms-text);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+.rb-btn-sm:hover {
+  background: var(--ms-blue-light);
+  border-color: var(--ms-blue);
+}
+.rb-btn-sm.active {
+  background: var(--ms-blue-light);
+  border-color: var(--ms-blue);
+}
+
+/* ─── Status bar (bottom) ─────────────────────────────────────────────────── */
+.ms-statusbar {
+  background: var(--ms-blue);
+  color: rgba(255,255,255,0.9);
+  font-size: 11px;
+  padding: 2px 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 22px;
+  border-top: 1px solid var(--ms-blue-dark);
+}
+
+/* ─── Office panel / card ─────────────────────────────────────────────────── */
 .panel {
-    background: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 8px;
+  background: var(--ms-white);
+  border: 1px solid var(--ms-border);
 }
 
-/* Small label */
+/* ─── Excel-style table ───────────────────────────────────────────────────── */
+.xl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: var(--ms-white);
+}
+.xl-table thead tr {
+  background: var(--ms-header-bg);
+  border-bottom: 2px solid var(--ms-border-dark);
+}
+.xl-table thead th {
+  padding: 5px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ms-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-right: 1px solid var(--ms-border);
+  white-space: nowrap;
+}
+.xl-table thead th:last-child { border-right: none; }
+.xl-table tbody tr {
+  border-bottom: 1px solid var(--ms-border);
+  transition: background 0.08s;
+}
+.xl-table tbody tr:hover { background: var(--ms-row-hover); }
+.xl-table tbody tr.selected { background: var(--ms-row-sel); }
+.xl-table tbody td {
+  padding: 5px 8px;
+  border-right: 1px solid #E8E8E8;
+  vertical-align: middle;
+}
+.xl-table tbody td:last-child { border-right: none; }
+
+/* ─── Office button (primary) ─────────────────────────────────────────────── */
+.ms-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-family: 'Segoe UI', sans-serif;
+  font-weight: 400;
+  background: var(--ms-white);
+  color: var(--ms-text);
+  border: 1px solid var(--ms-border-dark);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.ms-btn:hover { background: var(--ms-blue-light); border-color: var(--ms-blue); }
+.ms-btn:active { background: #C7D9F0; }
+.ms-btn.primary {
+  background: var(--ms-blue);
+  color: #fff;
+  border-color: var(--ms-blue-dark);
+}
+.ms-btn.primary:hover { background: var(--ms-blue-hover); }
+.ms-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─── Office input ────────────────────────────────────────────────────────── */
+.ms-input {
+  height: 24px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: 'Segoe UI', sans-serif;
+  border: 1px solid var(--ms-border-dark);
+  background: var(--ms-white);
+  color: var(--ms-text);
+  outline: none;
+  width: 100%;
+}
+.ms-input:focus { border-color: var(--ms-blue); box-shadow: 0 0 0 1px var(--ms-blue); }
+
+/* ─── Lifecycle badges (square, Office-style) ─────────────────────────────── */
+.lc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  font-family: 'Segoe UI', sans-serif;
+  text-transform: uppercase;
+}
+.lc-EDIT                { background: #F3F3F3; color: #444; border-color: #C8C8C8; }
+.lc-UNDER_APPROVAL      { background: #FFF4CE; color: #7A5C00; border-color: #F0D060; }
+.lc-APPROVED            { background: #DFF6DD; color: #1E6B1E; border-color: #82C882; }
+.lc-RELEASE_CANDIDATE   { background: #EDE7F6; color: #4A148C; border-color: #B39DDB; }
+.lc-RELEASED            { background: #DDEEFF; color: #004578; border-color: #7EB3E0; }
+.lc-DEPRECATED          { background: #FDE7E9; color: #8B0000; border-color: #F4ACAC; }
+
+/* ─── Misc helpers ────────────────────────────────────────────────────────── */
 .tiny-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #64748B;
-    font-weight: 600;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ms-text-muted);
 }
 
-/* Pulse for pending */
-@keyframes pulseSlow {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.55; }
-}
 .pulse-slow { animation: pulseSlow 2s ease-in-out infinite; }
+@keyframes pulseSlow { 0%,100%{opacity:1} 50%{opacity:.5} }
 
-/* Stat card hover */
-.stat-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px -10px rgba(15, 23, 42, 0.15); }
+.bar-gradient { background: var(--ms-blue); }
+.dot-grid {
+  background-image: radial-gradient(#C8C8C8 1px, transparent 1px);
+  background-size: 20px 20px;
+}
 
-/* Table */
-.table-row:hover { background: #F8FAFC; }
+/* ─── Page content area ───────────────────────────────────────────────────── */
+.page-content {
+  padding: 16px 20px;
+  background: var(--ms-bg);
+  min-height: calc(100vh - 130px);
+}
+
+/* ─── Stat card ───────────────────────────────────────────────────────────── */
+.stat-card { transition: border-color 0.15s; }
+.stat-card:hover { border-color: var(--ms-blue); }
+
+/* ─── Table row ───────────────────────────────────────────────────────────── */
+.table-row:hover { background: var(--ms-row-hover); }
+
+/* ─── shadcn overrides: square everything ─────────────────────────────────── */
+[class*="rounded"] { border-radius: 0 !important; }
+.rounded-full { border-radius: 0 !important; }

@@ -3,23 +3,23 @@ import { Link } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
 import { fmtDateShort } from "../lib/constants";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
+import { Input } from "../components/ui/input";
 import { Plus, Search, FileCode2, CheckCircle2, Circle, Archive } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
+const STATUS_STYLE = {
+  DRAFT: { background: "#F3F3F3", color: "#444", border: "1px solid #C8C8C8" },
+  VALID_FOR_CALIBRATION: { background: "#DFF6DD", color: "#1E6B1E", border: "1px solid #82C882" },
+  ARCHIVED: { background: "#E0E0E0", color: "#444", border: "1px solid #A0A0A0" },
+};
 function StatusPill({ status }) {
-  const map = {
-    DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
-    VALID_FOR_CALIBRATION: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    ARCHIVED: "bg-slate-200 text-slate-600 border-slate-300",
-  };
+  const st = STATUS_STYLE[status] || STATUS_STYLE.DRAFT;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${map[status]}`}>
-      {status === "VALID_FOR_CALIBRATION" ? <CheckCircle2 className="w-3 h-3" /> : status === "ARCHIVED" ? <Archive className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+    <span style={{ ...st, display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 6px", fontSize: 10, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+      {status === "VALID_FOR_CALIBRATION" ? <CheckCircle2 size={10} /> : status === "ARCHIVED" ? <Archive size={10} /> : <Circle size={10} />}
       {status}
     </span>
   );
@@ -71,20 +71,18 @@ export default function SoftwareReleasesPage() {
   const canCreate = user?.roles?.includes("PD_Project_Manager");
 
   return (
-    <div className="space-y-6" data-testid="page-software-releases">
-      <div className="flex items-end justify-between">
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="page-software-releases">
+      <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <div className="tiny-label">Workflow 1</div>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>
-            Software Releases
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">Register ECU software releases and link A2L / DBC / DTC artefacts.</p>
+          <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>Software Releases</h1>
+          <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Register ECU software releases and link A2L / DBC / DTC artefacts.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button disabled={!canCreate} className="bg-slate-900 hover:bg-slate-800" data-testid="btn-new-release">
-              <Plus className="w-4 h-4 mr-1.5" /> New release
-            </Button>
+            <button disabled={!canCreate} className="ms-btn primary" data-testid="btn-new-release">
+              <Plus size={13} /> New release
+            </button>
           </DialogTrigger>
           <DialogContent className="max-w-xl">
             <DialogHeader>
@@ -130,26 +128,26 @@ export default function SoftwareReleasesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button className="bg-slate-900 hover:bg-slate-800" onClick={create} data-testid="new-release-create">Create</Button>
+              <button className="ms-btn" onClick={() => setOpen(false)}>Cancel</button>
+              <button className="ms-btn primary" onClick={create} data-testid="new-release-create">Create</button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
       {/* Filters */}
-      <div className="panel p-4 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[220px]">
-          <Label className="tiny-label">Search</Label>
-          <div className="relative mt-1.5">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" placeholder="Identifier, version, description…" data-testid="sr-search" />
+      <div className="panel" style={{ padding: "10px 12px", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 200px" }}>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Search</div>
+          <div style={{ position: "relative" }}>
+            <Search size={12} style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", color: "#8A8886" }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} className="ms-input" style={{ paddingLeft: 22 }} placeholder="Identifier, version, description…" data-testid="sr-search" />
           </div>
         </div>
-        <div className="w-52">
-          <Label className="tiny-label">Status</Label>
+        <div style={{ width: 180 }}>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Status</div>
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="mt-1.5" data-testid="sr-status-filter"><SelectValue /></SelectTrigger>
+            <SelectTrigger data-testid="sr-status-filter" style={{ height: 24, fontSize: 12 }}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All</SelectItem>
               <SelectItem value="DRAFT">DRAFT</SelectItem>
@@ -158,45 +156,45 @@ export default function SoftwareReleasesPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-52">
-          <Label className="tiny-label">Supplier</Label>
-          <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} className="mt-1.5" placeholder="e.g. Bosch" />
+        <div style={{ width: 160 }}>
+          <div className="tiny-label" style={{ marginBottom: 3 }}>Supplier</div>
+          <input value={supplier} onChange={(e) => setSupplier(e.target.value)} className="ms-input" placeholder="e.g. Bosch" />
         </div>
       </div>
 
       {/* Table */}
-      <div className="panel overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="panel" style={{ overflow: "hidden" }}>
+        <table className="xl-table">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-left">
-              <th className="tiny-label py-3 px-4">Identifier</th>
-              <th className="tiny-label py-3 px-4">Version</th>
-              <th className="tiny-label py-3 px-4">Supplier</th>
-              <th className="tiny-label py-3 px-4">A2L</th>
-              <th className="tiny-label py-3 px-4">Released</th>
-              <th className="tiny-label py-3 px-4">Status</th>
-              <th />
+            <tr>
+              <th>Identifier</th>
+              <th>Version</th>
+              <th>Supplier</th>
+              <th>A2L</th>
+              <th>Released</th>
+              <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.id} className="table-row border-b border-slate-100 last:border-0" data-testid={`sr-row-${r.software_release_identifier}`}>
-                <td className="py-3 px-4 font-medium text-slate-900">{r.software_release_identifier}</td>
-                <td className="py-3 px-4 font-mono text-xs text-slate-700">{r.version}</td>
-                <td className="py-3 px-4 text-slate-700">{r.supplier || "—"}</td>
-                <td className="py-3 px-4">
-                  {r.a2l_file_reference ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-mono text-slate-700"><FileCode2 className="w-3.5 h-3.5" /> {r.a2l_file_reference}</span>
-                  ) : <span className="text-[11px] text-amber-600">missing</span>}
+              <tr key={r.id} data-testid={`sr-row-${r.software_release_identifier}`}>
+                <td style={{ fontWeight: 600 }}>{r.software_release_identifier}</td>
+                <td style={{ fontFamily: "monospace" }}>{r.version}</td>
+                <td>{r.supplier || "—"}</td>
+                <td>
+                  {r.a2l_file_reference
+                    ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "monospace", fontSize: 11 }}><FileCode2 size={12} /> {r.a2l_file_reference}</span>
+                    : <span style={{ fontSize: 10, color: "#7A5C00" }}>missing</span>}
                 </td>
-                <td className="py-3 px-4 text-xs text-slate-500">{fmtDateShort(r.release_date)}</td>
-                <td className="py-3 px-4"><StatusPill status={r.status} /></td>
-                <td className="py-3 px-4 text-right">
-                  <Link to={`/software-releases/${r.id}`} className="text-xs text-slate-900 font-medium hover:underline" data-testid={`sr-open-${r.software_release_identifier}`}>Open →</Link>
+                <td style={{ fontFamily: "monospace", fontSize: 11, color: "#605E5C" }}>{fmtDateShort(r.release_date)}</td>
+                <td><StatusPill status={r.status} /></td>
+                <td style={{ textAlign: "right" }}>
+                  <Link to={`/software-releases/${r.id}`} style={{ fontSize: 11, color: "#2B579A", fontWeight: 600 }} data-testid={`sr-open-${r.software_release_identifier}`}>Open →</Link>
                 </td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-sm text-slate-500">No software releases found</td></tr>}
+            {items.length === 0 && <tr><td colSpan={7} style={{ textAlign: "center", color: "#8A8886", padding: "20px 0" }}>No software releases found</td></tr>}
           </tbody>
         </table>
       </div>
