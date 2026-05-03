@@ -44,6 +44,7 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
+
 app = FastAPI(title="HERKO Calibration Manager")
 api = APIRouter(prefix="/api")
 
@@ -951,10 +952,11 @@ try:
 except ImportError:
     pass  # visualization deps not installed — app still works normally
 
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )

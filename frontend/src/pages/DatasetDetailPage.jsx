@@ -63,16 +63,16 @@ export default function DatasetDetailPage() {
   const [diff, setDiff] = useState(null);
   const [allDatasets, setAllDatasets] = useState([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await api.get(`/datasets/${id}`);
     setBundle(data);
     const lbls = await api.get(`/datasets/${id}/labels`);
     setLabels(lbls.data);
     const a = await api.get(`/audit-log`, { params: { entity_id: id } });
     setAudit(a.data);
-  };
+  }, [id]);
 
-  useEffect(() => { load(); api.get("/datasets").then((r) => setAllDatasets(r.data)); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { load(); api.get("/datasets").then((r) => setAllDatasets(r.data)); }, [load]);
 
   if (!bundle) return <div className="tiny-label pulse-slow">Loading dataset…</div>;
   const d = bundle.dataset;

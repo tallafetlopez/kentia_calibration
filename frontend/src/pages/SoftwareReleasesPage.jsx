@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
@@ -44,17 +44,17 @@ export default function SoftwareReleasesPage() {
     dtc_list_reference: "",
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const params = {};
     if (q) params.q = q;
     if (status !== "ALL") params.status = status;
     if (supplier) params.supplier = supplier;
     const { data } = await api.get("/software-releases", { params });
     setItems(data);
-  };
+  }, [q, status, supplier]);
 
   useEffect(() => { api.get("/ecus").then((r) => { setEcus(r.data); if (r.data[0]) setForm((f) => ({ ...f, ecu_id: r.data[0].id })); }); }, []);
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [q, status, supplier]);
+  useEffect(() => { load(); }, [load]);
 
   const create = async () => {
     try {

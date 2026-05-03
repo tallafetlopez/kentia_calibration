@@ -1,9 +1,13 @@
+
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
-load_dotenv(".env")
+# Cargar .env desde la ruta absoluta del backend
+env_path = Path(__file__).parent / ".env"
+load_dotenv(env_path)
 
 async def check():
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])

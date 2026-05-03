@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ export default function SoftwareReleaseDetailPage() {
   const [sr, setSr] = useState(null);
   const [patch, setPatch] = useState({});
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const { data } = await api.get(`/software-releases/${id}`);
     setSr(data);
     setPatch({
@@ -25,8 +25,8 @@ export default function SoftwareReleaseDetailPage() {
       description: data.description || "",
       supplier: data.supplier || "",
     });
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
   if (!sr) return <div className="tiny-label pulse-slow">Loading…</div>;
 
   const canEdit = user?.roles?.includes("PD_Project_Manager");
