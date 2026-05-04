@@ -195,6 +195,25 @@ Durante la revisión completa del proyecto se detectaron y corrigieron los sigui
 
 ---
 
+## Solución de incompatibilidad numpy/scipy
+
+Si al arrancar el backend ves un error como:
+
+```
+ValueError: numpy.dtype size changed, may indicate binary incompatibility. Expected 96 from C header, got 88 from PyObject
+```
+
+O bien advertencias sobre versiones de numpy y scipy, ejecuta lo siguiente en tu entorno virtual:
+
+```bash
+pip uninstall -y numpy scipy
+pip install "numpy>=1.21.6,<1.28.0" scipy --force-reinstall
+```
+
+Esto instalará versiones compatibles y el backend arrancará correctamente.
+
+---
+
 ## Comandos útiles
 
 ```bash

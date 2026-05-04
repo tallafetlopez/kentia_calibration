@@ -68,7 +68,7 @@ export default function DashboardPage() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <div className="tiny-label">Dataset Lifecycle</div>
-          <Link to="/datasets" style={{ fontSize: 11, color: "#2B579A", display: "flex", alignItems: "center", gap: 3 }}>
+          <Link to="/datasets" style={{ fontSize: 11, color: "#646E5A", display: "flex", alignItems: "center", gap: 3 }}>
             View all <ArrowUpRight size={11} />
           </Link>
         </div>

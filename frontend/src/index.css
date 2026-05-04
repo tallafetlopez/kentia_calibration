@@ -4,10 +4,10 @@
 
 /* ─── Office-style design tokens ─────────────────────────────────────────── */
 :root {
-  --ms-blue:        #2B579A;   /* Office accent blue */
-  --ms-blue-dark:   #1E3F73;
-  --ms-blue-light:  #D6E4F7;
-  --ms-blue-hover:  #3A6BBF;
+  --ms-blue:        #646E5A;   /* Olive verde principal */
+  --ms-blue-dark:   #2F3C1E;
+  --ms-blue-light:  #E4E7DF;
+  --ms-blue-hover:  #8A9478;
   --ms-white:       #FFFFFF;
   --ms-bg:          #F3F3F3;   /* Office window background */
   --ms-ribbon-bg:   #F0F0F0;   /* Ribbon tab content area */
@@ -17,8 +17,8 @@
   --ms-text:        #212121;
   --ms-text-muted:  #605E5C;
   --ms-text-light:  #8A8886;
-  --ms-row-hover:   #EEF3FA;
-  --ms-row-sel:     #CCDDF5;
+  --ms-row-hover:   #F0F2EE;
+  --ms-row-sel:     #D1D5CB;
   --ms-header-bg:   #F0F0F0;
 
   /* shadcn/radix overrides → square corners */
@@ -29,19 +29,19 @@
   --card-foreground: 0 0% 13%;
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 13%;
-  --primary: 216 57% 39%;
+  --primary: 90 10% 39%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 13%;
   --muted: 0 0% 94%;
   --muted-foreground: 0 0% 38%;
-  --accent: 216 57% 39%;
+  --accent: 90 10% 39%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
   --border: 0 0% 78%;
   --input: 0 0% 78%;
-  --ring: 216 57% 39%;
+  --ring: 90 10% 39%;
 }
 
 /* ─── Base ────────────────────────────────────────────────────────────────── */

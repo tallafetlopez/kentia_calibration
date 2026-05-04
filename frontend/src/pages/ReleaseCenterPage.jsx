@@ -243,7 +243,7 @@ export default function ReleaseCenterPage() {
               <div key={d.id} className="panel" style={{ padding: "12px 14px" }} data-testid={`rc-cand-${d.dataset_name}`}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <LifecycleBadge state={d.lifecycle_state} />
-                  <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#2B579A" }}>Open →</Link>
+                  <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#646E5A" }}>Open →</Link>
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "#212121", marginTop: 8 }}>{d.dataset_name}</div>
                 <div style={{ fontSize: 10, fontFamily: "monospace", color: "#605E5C", marginTop: 2 }}>
@@ -291,7 +291,7 @@ export default function ReleaseCenterPage() {
                 return (
                   <tr key={d.id}>
                     <td>
-                      <Link to={`/datasets/${d.id}`} style={{ color: "#2B579A", fontWeight: 600, fontSize: 12 }}>
+                      <Link to={`/datasets/${d.id}`} style={{ color: "#646E5A", fontWeight: 600, fontSize: 12 }}>
                         {d.dataset_name}
                       </Link>
                     </td>
@@ -366,7 +366,7 @@ export default function ReleaseCenterPage() {
                       <td style={{ fontFamily: "monospace", fontSize: 11 }}>{srName(v.software_release_id)}</td>
                       <td style={{ fontSize: 11 }}>
                         {ds
-                          ? <Link to={`/datasets/${v.dataset_id}`} style={{ color: "#2B579A" }}>{ds.dataset_name}</Link>
+                          ? <Link to={`/datasets/${v.dataset_id}`} style={{ color: "#646E5A" }}>{ds.dataset_name}</Link>
                           : v.dataset_id.slice(0, 8) + "…"
                         }
                       </td>

@@ -13,6 +13,12 @@ module.exports = {
   			sm: '0px'
   		},
   		colors: {
+  			brand: {
+  				DEFAULT: '#646E5A',
+  				dark:    '#2F3C1E',
+  				light:   '#8A9478',
+  				muted:   '#4A5240',
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

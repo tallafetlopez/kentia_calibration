@@ -91,12 +91,12 @@ function ChangeLogPanel({ datasets, sr }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          <ClipboardList size={13} style={{ color: "#2B579A" }} />
+          <ClipboardList size={13} style={{ color: "#646E5A" }} />
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#212121" }}>
             Calibration Change Log
           </span>
           <span style={{
-            fontSize: 10, fontFamily: "monospace", background: "#2B579A", color: "#fff",
+            fontSize: 10, fontFamily: "monospace", background: "#646E5A", color: "#fff",
             padding: "0 6px", marginLeft: 4,
           }}>{filtered.length}</span>
           <span style={{ fontSize: 10, color: "#8B0000", fontWeight: 600, marginLeft: 8 }}>
@@ -196,7 +196,7 @@ function ChangeLogPanel({ datasets, sr }) {
                         </td>
                         <td style={{ fontSize: 11, fontFamily: "monospace" }}>
                           {e.entity_type === "dataset"
-                            ? <Link to={`/datasets/${e.entity_id}`} style={{ color: "#2B579A" }}>{dsName}</Link>
+                            ? <Link to={`/datasets/${e.entity_id}`} style={{ color: "#646E5A" }}>{dsName}</Link>
                             : <span style={{ color: "#605E5C" }}>{e.entity_id?.slice(0, 12)}…</span>
                           }
                         </td>
@@ -459,7 +459,7 @@ export default function DatasetsPage() {
                   <td style={{ fontSize: 11 }}>{d.author}</td>
                   <td style={{ fontFamily: "monospace", fontSize: 10, color: "#8A8886" }}>{fmtDate(d.last_modified_date)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#2B579A", fontWeight: 600 }} data-testid={`ds-open-${d.dataset_name}`}>Open →</Link>
+                    <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }} data-testid={`ds-open-${d.dataset_name}`}>Open →</Link>
                   </td>
                 </tr>
               );

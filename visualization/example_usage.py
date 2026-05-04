@@ -52,7 +52,7 @@ labels_b = _make_labels(seed_offset=1.0)   # slightly different values
 
 # ── Demo 1: Single dataset — 3D surface ──────────────────────────────────────
 print("Opening 3D surface (Dataset A)…")
-viz = CalibrationMap3D(labels_a, x_col="label_name", y_col="confidence_status", z_col="value_num")
+viz = CalibrationMap3D(labels_a, x_col="label_name", y_col="confidence_status", z_col="value_num", grid_size=16)
 fig_surface = viz.build(mode="surface", dataset_a_name="ECM-SW-2024.1 · DS_Base_Euro6d_Prod")
 fig_surface.show()
 
@@ -63,7 +63,7 @@ fig_heatmap.show()
 
 # ── Demo 3: Delta surface (B − A) ────────────────────────────────────────────
 print("Opening delta surface (B − A)…")
-viz2 = CalibrationMap3D(labels_a, labels_b)
+viz2 = CalibrationMap3D(labels_a, labels_b, grid_size=16)
 fig_delta = viz2.build(
     mode="delta",
     dataset_a_name="DS_Base_Euro6d_Prod",

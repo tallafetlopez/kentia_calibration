@@ -33,15 +33,11 @@ export default function LoginPage() {
     }}>
       {/* Office-style title bar */}
       <div style={{
-        background: "#2B579A", color: "#fff",
+        background: "#646E5A", color: "#fff",
         padding: "6px 16px", fontSize: 13, fontWeight: 600,
         display: "flex", alignItems: "center", gap: 10,
       }}>
-        <div style={{
-          width: 22, height: 22, background: "rgba(255,255,255,0.25)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontWeight: 700, fontSize: 13,
-        }}>H</div>
+        <img src="/favicons/favicon-32x32.png" alt="" style={{ width: 22, height: 22, objectFit: "contain" }} />
         HERKO Calibration Manager
       </div>
 
@@ -120,7 +116,7 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 16, fontSize: 11, color: "#605E5C" }}>
             No account?{" "}
-            <Link to="/register" style={{ color: "#2B579A", textDecoration: "underline" }} data-testid="login-to-register">
+            <Link to="/register" style={{ color: "#646E5A", textDecoration: "underline" }} data-testid="login-to-register">
               Register
             </Link>
           </div>
@@ -143,7 +139,7 @@ export default function LoginPage() {
                   ["dma@herko.dev", "DM_Administrator"],
                 ].map(([e, r]) => (
                   <tr key={e}>
-                    <td style={{ padding: "1px 0", color: "#2B579A", cursor: "pointer" }}
+                    <td style={{ padding: "1px 0", color: "#646E5A", cursor: "pointer", fontWeight: 600 }}
                       onClick={() => setEmail(e)}>{e}</td>
                     <td style={{ padding: "1px 0 1px 12px", color: "#605E5C" }}>{r}</td>
                   </tr>

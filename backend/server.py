@@ -932,6 +932,43 @@ async def assign_dataset_to_release(sr_id: str, body: dict, user: dict = Depends
 
 
 # =====================================================
+#                 VISUALIZATION
+# =====================================================
+@api.get("/viz/calibration-map/{dataset_id}/json")
+async def viz_calibration_map_json(
+    dataset_id: str,
+    mode: str = "heatmap",
+    compare_id: str = None,
+    smooth: bool = True,
+    user: dict = Depends(current_user),
+):
+    """Returns Plotly figure JSON for embedding in React."""
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    try:
+        from visualization.heatmap_3d import CalibrationMap3D
+        import plotly.io as pio
+    except ImportError as e:
+        raise HTTPException(500, f"Visualization deps not installed: {e}")
+
+    labels_a = await db.labels.find({"dataset_id": dataset_id}, {"_id": 0}).to_list(10000)
+    if not labels_a:
+        raise HTTPException(404, "No labels found for this dataset")
+
+    labels_b = None
+    if compare_id:
+        labels_b = await db.labels.find({"dataset_id": compare_id}, {"_id": 0}).to_list(10000)
+
+    try:
+        viz = CalibrationMap3D(labels_a=labels_a, labels_b=labels_b)
+        fig = viz.build(mode=mode, smooth=smooth)
+    except Exception as e:
+        raise HTTPException(400, f"Visualization error: {e}")
+
+    return pio.to_json(fig, validate=False)
+
+
+# =====================================================
 #                 ADMIN
 # =====================================================
 @api.post("/seed")

@@ -44,7 +44,7 @@ const EDITABLE_KEYS = [
 function toneForConfidence(v) {
   if (v === "EMPTY") return "bg-amber-50 text-amber-700 border-amber-200";
   if (v === "DOCUMENTED") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (v === "VALIDATED") return "bg-blue-50 text-blue-700 border-blue-200";
+  if (v === "VALIDATED") return "bg-brand/10 text-brand-dark border-brand/30";
   return "bg-slate-100 text-slate-700 border-slate-200";
 }
 
@@ -211,7 +211,7 @@ export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
                 const isSel = selected.has(l.id);
                 const zebra = idx % 2 === 0 ? "bg-white" : "bg-slate-50/40";
                 return (
-                  <tr key={l.id} className={`${zebra} border-b border-slate-100 hover:bg-blue-50/40 transition-colors`} data-testid={`lbl-row-${l.label_name}`}>
+                  <tr key={l.id} className={`${zebra} border-b border-slate-100 hover:bg-brand/5 transition-colors`} data-testid={`lbl-row-${l.label_name}`}>
                     {COLS.map((c) => {
                       if (c.kind === "select") return (
                         <td key={c.key} className="px-2 py-1 border-r border-slate-100 sticky left-0 bg-inherit z-[1]">
@@ -249,7 +249,7 @@ export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
                             ) : (
                               <input
                                 ref={inputRef}
-                                className="w-full bg-white border border-blue-500 rounded-sm px-1.5 py-0.5 text-[12px] font-mono outline-none"
+                                className="w-full bg-white border border-brand rounded-sm px-1.5 py-0.5 text-[12px] font-mono outline-none"
                                 value={editCell.value}
                                 onChange={(e) => setEditCell({ ...editCell, value: e.target.value })}
                                 onBlur={() => saveCell(editCell.value, null)}
@@ -307,7 +307,7 @@ function FilterChip({ active, onClick, tone = "slate", children }) {
     slate: active ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200",
     red: active ? "bg-red-600 text-white border-red-600" : "bg-white text-slate-700 border-slate-200",
     amber: active ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-700 border-slate-200",
-    blue: active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 border-slate-200",
+    blue: active ? "bg-brand text-white border-brand" : "bg-white text-slate-700 border-slate-200",
   };
   return (
     <button
@@ -340,7 +340,7 @@ function CellValue({ col, label }) {
   }
   if (col.key === "parametrizable_in_customer") {
     return v === "YES" ? (
-      <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">YES</span>
+      <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold bg-brand/10 text-brand-dark border border-brand/30">YES</span>
     ) : <span className="text-slate-400 text-[11px]">NO</span>;
   }
   if (col.key === "confidence_status") {
@@ -365,7 +365,7 @@ function EnumCellEditor({ value, options, onChange, onCommit, onCancel }) {
         if (e.key === "Enter") { e.preventDefault(); onCommit(e.target.value, "down"); }
         if (e.key === "Tab") { e.preventDefault(); onCommit(e.target.value, "right"); }
       }}
-      className="w-full bg-white border border-blue-500 rounded-sm px-1 py-0.5 text-[12px] font-mono outline-none"
+      className="w-full bg-white border border-brand rounded-sm px-1 py-0.5 text-[12px] font-mono outline-none"
     >
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>

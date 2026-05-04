@@ -190,7 +190,7 @@ export default function SoftwareReleasesPage() {
                 <td style={{ fontFamily: "monospace", fontSize: 11, color: "#605E5C" }}>{fmtDateShort(r.release_date)}</td>
                 <td><StatusPill status={r.status} /></td>
                 <td style={{ textAlign: "right" }}>
-                  <Link to={`/software-releases/${r.id}`} style={{ fontSize: 11, color: "#2B579A", fontWeight: 600 }} data-testid={`sr-open-${r.software_release_identifier}`}>Open →</Link>
+                  <Link to={`/software-releases/${r.id}`} style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }} data-testid={`sr-open-${r.software_release_identifier}`}>Open →</Link>
                 </td>
               </tr>
             ))}

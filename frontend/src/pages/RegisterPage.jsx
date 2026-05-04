@@ -1,13 +1,9 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { formatApiErrorDetail } from "../lib/api";
 import { ROLES_LIST } from "../lib/constants";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Checkbox } from "../components/ui/checkbox";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -38,46 +34,101 @@ export default function RegisterPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="max-w-xl w-full panel p-8">
-        <Link to="/login" className="text-xs text-slate-500 flex items-center gap-1 hover:text-slate-900" data-testid="register-back">
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
-        </Link>
-        <div className="tiny-label mt-6">Create account</div>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>
-          Join HERKO Calibration Manager
-        </h1>
+  const lbl = { display: "block", fontSize: 11, fontWeight: 600, color: "#605E5C", marginBottom: 4 };
 
-        <form className="mt-8 space-y-5" onSubmit={submit}>
-          <div>
-            <Label className="tiny-label">Full name</Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1.5 h-11" required data-testid="register-name" />
-          </div>
-          <div>
-            <Label className="tiny-label">Email</Label>
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1.5 h-11" required data-testid="register-email" />
-          </div>
-          <div>
-            <Label className="tiny-label">Password</Label>
-            <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="mt-1.5 h-11" required data-testid="register-password" />
-          </div>
-          <div>
-            <Label className="tiny-label">Roles</Label>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {ROLES_LIST.map((r) => (
-                <label key={r} className="flex items-center gap-2 text-[11px] font-mono text-slate-700 px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                  <Checkbox checked={roles.includes(r)} onCheckedChange={() => toggleRole(r)} data-testid={`register-role-${r}`} />
-                  {r}
-                </label>
-              ))}
+  return (
+    <div style={{ minHeight: "100vh", background: "#F3F3F3", display: "flex", flexDirection: "column" }}>
+
+      {/* Title bar */}
+      <div style={{
+        background: "#646E5A", color: "#fff",
+        padding: "6px 16px", fontSize: 13, fontWeight: 600,
+        display: "flex", alignItems: "center", gap: 10,
+        flexShrink: 0,
+      }}>
+        <img src="/favicons/favicon-32x32.png" alt="" style={{ width: 22, height: 22, objectFit: "contain" }} />
+        HERKO Calibration Manager
+      </div>
+
+      {/* Area centrada */}
+      <div style={{ flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 24px 24px" }}>
+        <div style={{
+          background: "#fff", border: "1px solid #C8C8C8",
+          width: "100%", maxWidth: 400, padding: "32px 36px",
+        }}>
+
+          {/* Cabecera */}
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "#605E5C", marginBottom: 6 }}>
+              ECM Configuration Management
             </div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: "#212121" }}>Create account</div>
           </div>
-          {err && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2" data-testid="register-error">{err}</div>}
-          <Button type="submit" disabled={busy} className="w-full h-11 bg-slate-900 hover:bg-slate-800" data-testid="register-submit">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create account"}
-          </Button>
-        </form>
+
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+            <div>
+              <label style={lbl}>Full name</label>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="ms-input" style={{ height: 28 }} required data-testid="register-name" />
+            </div>
+
+            <div>
+              <label style={lbl}>Email address</label>
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="ms-input" style={{ height: 28 }} required data-testid="register-email" />
+            </div>
+
+            <div>
+              <label style={lbl}>Password</label>
+              <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className="ms-input" style={{ height: 28 }} required data-testid="register-password" />
+            </div>
+
+            <div>
+              <div style={lbl}>Roles</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, marginTop: 4 }}>
+                {ROLES_LIST.map((r) => (
+                  <label key={r} style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    fontSize: 10, fontFamily: "monospace", color: "#212121",
+                    padding: "3px 6px", border: "1px solid",
+                    borderColor: roles.includes(r) ? "#646E5A" : "#C8C8C8",
+                    background: roles.includes(r) ? "#E4E7DF" : "#fff",
+                    cursor: "pointer", lineHeight: 1.3, minWidth: 0,
+                  }}>
+                    <input type="checkbox" checked={roles.includes(r)} onChange={() => toggleRole(r)}
+                      style={{ accentColor: "#646E5A", flexShrink: 0 }}
+                      data-testid={`register-role-${r}`} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {err && (
+              <div style={{ fontSize: 11, color: "#8B0000", background: "#FDE7E9", border: "1px solid #F4ACAC", padding: "6px 10px" }}
+                data-testid="register-error">{err}</div>
+            )}
+
+            <button type="submit" disabled={busy} className="ms-btn primary"
+              style={{ justifyContent: "center", height: 30, marginTop: 4 }}
+              data-testid="register-submit">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : "Create account"}
+            </button>
+          </form>
+
+          <div style={{ marginTop: 14, fontSize: 11, color: "#605E5C" }}>
+            Already have an account?{" "}
+            <Link to="/login" style={{ color: "#646E5A", textDecoration: "underline" }} data-testid="register-to-login">
+              Sign in
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "8px", fontSize: 10, color: "#8A8886", fontFamily: "monospace" }}>
+        {`© ${new Date().getFullYear()} HERKO · ECM Configuration Management`}
       </div>
     </div>
   );

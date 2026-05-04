@@ -105,11 +105,7 @@ export default function AppLayout({ children }) {
         {/* Title bar */}
         <div className="ribbon-title-bar">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{
-              width: 22, height: 22, background: "rgba(255,255,255,0.25)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0,
-            }}>H</div>
+            <img src="/favicons/favicon-32x32.png" alt="" style={{ width: 22, height: 22, objectFit: "contain" }} />
             <span className="ribbon-app-name">HERKO Calibration Manager</span>
           </div>
 

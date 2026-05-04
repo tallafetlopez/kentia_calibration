@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
@@ -43,9 +43,109 @@ function LabelBadge({ children, tone }) {
     ok: "bg-emerald-50 text-emerald-700 border-emerald-200",
     warn: "bg-amber-50 text-amber-700 border-amber-200",
     neutral: "bg-slate-100 text-slate-700 border-slate-200",
-    info: "bg-blue-50 text-blue-700 border-blue-200",
+    info: "bg-brand/10 text-brand-dark border-brand/30",
   };
   return <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-mono border ${map[tone]}`}>{children}</span>;
+}
+
+// ── Chart tab ─────────────────────────────────────────────────────────────────
+const VIZ_MODES = [
+  { value: "surface", label: "3D Surface" },
+  { value: "heatmap", label: "Heatmap" },
+  { value: "overlay", label: "Overlay (compare)" },
+  { value: "delta", label: "Delta (compare)" },
+];
+
+function ChartTab({ datasetId, allDatasets }) {
+  const [mode, setMode] = useState("heatmap");
+  const [compareId, setCompareId] = useState("");
+  const [figData, setFigData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const plotRef = useRef(null);
+
+  const loadChart = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = { mode };
+      if (compareId) params.compare_id = compareId;
+      const { data } = await api.get(`/viz/calibration-map/${datasetId}/json`, { params });
+      const parsed = typeof data === "string" ? JSON.parse(data) : data;
+      setFigData(parsed);
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message || "Error loading chart");
+    } finally {
+      setLoading(false);
+    }
+  }, [datasetId, mode, compareId]);
+
+  useEffect(() => { loadChart(); }, [loadChart]);
+
+  useEffect(() => {
+    if (!figData || !plotRef.current) return;
+    import("plotly.js-dist-min").then((Plotly) => {
+      Plotly.react(plotRef.current, figData.data, {
+        ...figData.layout,
+        autosize: true,
+        margin: { l: 60, r: 20, t: 50, b: 60 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        font: { family: "Inter, sans-serif", size: 11 },
+      }, { displayModeBar: true, scrollZoom: true, responsive: true });
+    });
+  }, [figData]);
+
+  const needsCompare = mode === "overlay" || mode === "delta";
+
+  return (
+    <div className="space-y-4">
+      <div className="panel p-4 flex flex-wrap items-end gap-3">
+        <div>
+          <div className="tiny-label mb-1">Mode</div>
+          <Select value={mode} onValueChange={setMode}>
+            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {VIZ_MODES.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {needsCompare && (
+          <div>
+            <div className="tiny-label mb-1">Compare with</div>
+            <Select value={compareId} onValueChange={setCompareId}>
+              <SelectTrigger className="w-56"><SelectValue placeholder="Pick a dataset…" /></SelectTrigger>
+              <SelectContent>
+                {allDatasets.map((x) => <SelectItem key={x.id} value={x.id}>{x.dataset_name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <Button variant="outline" onClick={loadChart} disabled={loading}>
+          {loading ? "Loading…" : "Refresh chart"}
+        </Button>
+      </div>
+
+      {error && (
+        <div className="panel p-4 text-sm text-red-700 bg-red-50 border-red-200 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
+        </div>
+      )}
+
+      {loading && (
+        <div className="panel p-12 flex justify-center items-center text-sm text-slate-500">
+          Building chart…
+        </div>
+      )}
+
+      <div
+        ref={plotRef}
+        style={{ width: "100%", height: "520px", display: figData && !loading ? "block" : "none" }}
+        className="panel"
+      />
+      )}
+    </div>
+  );
 }
 
 export default function DatasetDetailPage() {
@@ -91,9 +191,16 @@ export default function DatasetDetailPage() {
   const runTechValidate = async () => {
     try {
       const { data } = await api.post(`/datasets/${id}/technical-validate`);
-      if (data.status === "PASS") toast.success("Technical validation PASS");
-      else toast.error(`FAIL: ${data.errors.length} issue(s)`);
-      load();
+      if (data.status === "PASS") {
+        toast.success("Technical validation PASS");
+      } else {
+        const n = data.errors.length;
+        toast.error(`Technical validation FAIL — ${n} issue${n !== 1 ? "s" : ""}`, {
+          description: data.errors.slice(0, 5).join("\n") + (n > 5 ? `\n…and ${n - 5} more` : ""),
+          duration: 8000,
+        });
+      }
+      await load();
     } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
   };
 
@@ -298,12 +405,13 @@ export default function DatasetDetailPage() {
           {[
             ["overview", "Overview"],
             ["labels", `Labels · ${labels.length}`],
+            ["charts", "Charts"],
             ["changelog", "Changelog"],
             ["review", "Review & Approval"],
             ["deployment", "Deployment"],
             ["audit", "Audit Trail"],
           ].map(([v, lbl]) => (
-            <TabsTrigger key={v} value={v} className="relative data-[state=active]:text-slate-900 data-[state=active]:shadow-none rounded-none pb-3 pt-0 px-0 font-medium text-sm text-slate-500 data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:-bottom-[1px] data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-blue-600 bg-transparent" data-testid={`ds-tab-${v}`}>
+            <TabsTrigger key={v} value={v} className="relative data-[state=active]:text-slate-900 data-[state=active]:shadow-none rounded-none pb-3 pt-0 px-0 font-medium text-sm text-slate-500 data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:-bottom-[1px] data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-brand bg-transparent" data-testid={`ds-tab-${v}`}>
               {lbl}
             </TabsTrigger>
           ))}
@@ -322,6 +430,19 @@ export default function DatasetDetailPage() {
                   </li>
                 ))}
               </ul>
+              {d.technical_validation_status === "FAIL" && d.technical_validation_summary?.length > 0 && (
+                <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-red-700 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Validation issues ({d.technical_validation_summary.length})
+                  </div>
+                  <ul className="space-y-1">
+                    {d.technical_validation_summary.map((err, i) => (
+                      <li key={i} className="text-xs font-mono text-red-800">{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {d.lifecycle_state === "EDIT" && (
                 <div className="mt-5 flex gap-2">
                   <Button variant="outline" onClick={runTechValidate} disabled={!canEditDs} data-testid="btn-tech-validate"><Shield className="w-4 h-4 mr-1.5" /> Run technical validation</Button>
@@ -351,7 +472,7 @@ export default function DatasetDetailPage() {
                 <div><div className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Chivo" }}>{labels.length}</div><div className="tiny-label">Total</div></div>
                 <div><div className="text-2xl font-bold text-red-700" style={{ fontFamily: "Chivo" }}>{regulatoryLabels.length}</div><div className="tiny-label">Regulatory</div></div>
                 <div><div className="text-2xl font-bold text-amber-700" style={{ fontFamily: "Chivo" }}>{incompleteLabels.length}</div><div className="tiny-label">Incomplete</div></div>
-                <div><div className="text-2xl font-bold text-blue-700" style={{ fontFamily: "Chivo" }}>{modifiedCount}</div><div className="tiny-label">Modified</div></div>
+                <div><div className="text-2xl font-bold text-brand-dark" style={{ fontFamily: "Chivo" }}>{modifiedCount}</div><div className="tiny-label">Modified</div></div>
               </div>
             </div>
           </div>
@@ -514,6 +635,11 @@ export default function DatasetDetailPage() {
               </tbody>
             </table>
           </div>
+        </TabsContent>
+
+        {/* Charts */}
+        <TabsContent value="charts" className="mt-6">
+          <ChartTab datasetId={id} allDatasets={allDatasets.filter((x) => x.id !== id)} />
         </TabsContent>
       </Tabs>
 
