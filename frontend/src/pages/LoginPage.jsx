@@ -20,7 +20,12 @@ export default function LoginPage() {
       await login(email, password);
       navigate("/");
     } catch (e) {
-      setErr(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+      console.error("❌ Login error:", e);
+      const errorMsg =
+        formatApiErrorDetail(e.response?.data?.detail) ||
+        e.message ||
+        "Login failed. Please check your credentials and try again.";
+      setErr(errorMsg);
     } finally {
       setBusy(false);
     }

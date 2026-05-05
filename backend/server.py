@@ -1,55 +1,42 @@
-"""HERKO Calibration Manager - FastAPI backend."""
 from dotenv import load_dotenv
 from pathlib import Path
+from auth_utils import verify_password, create_access_token, get_current_user, hash_password
+from seed import seed_all, _make_labels
+from routers import sw_releases, datasets, vehicle_sw_ids, a2l
+from routers import traceability as traceability_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
-import logging
-from datetime import datetime, timezone
-from typing import List, Optional
-
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Query
-from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from models import (
-    _uuid,
-    _now,
-    ROLES,
-    RegisterBody,
-    LoginBody,
-    SwitchRoleBody,
-    SoftwareReleaseCreate,
-    DatasetCreate,
-    LabelUpdate,
-    LabelMassUpdate,
-    ReviewUpdate,
-    ReleaseSelectBody,
-    DeprecateBody,
-    DeriveBody,
-    VehicleSWIDCreate,
-)
-from auth_utils import (
-    hash_password,
-    verify_password,
-    create_access_token,
-    get_current_user,
-)
-from seed import seed_all, A2L_LABELS_TEMPLATE, _make_labels
-
-# -------- Setup --------
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
+import logging
+from models import (
+    CalibrationFile, CalibrationFileType, _uuid, _now, ROLES,
+    RegisterBody, LoginBody, SwitchRoleBody, SoftwareReleaseCreate, DatasetCreate,
+    LabelUpdate, LabelMassUpdate, ReviewUpdate, ReleaseSelectBody, DeprecateBody, DeriveBody, VehicleSWIDCreate
+)
+# -------- Calibration Files API --------
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Query, UploadFile, File
+from typing import List, Optional
+
+from bson import ObjectId
+
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="HERKO Calibration Manager")
 api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("herko")
+
+# Set to True to prevent demo data reseeding on backend startup.
+DISABLE_SEED = True
 
 
 # -------- Helpers --------
@@ -106,9 +93,12 @@ async def on_startup():
 
     existing = await db.users.count_documents({})
     if existing == 0:
-        logger.info("Empty database — seeding demo data")
-        stats = await seed_all(db)
-        logger.info(f"Seeded: {stats}")
+        if DISABLE_SEED:
+            logger.info("Empty database detected, but automatic seed is DISABLED")
+        else:
+            logger.info("Empty database — seeding demo data")
+            stats = await seed_all(db)
+            logger.info(f"Seeded: {stats}")
 
 
 @app.on_event("shutdown")
@@ -146,14 +136,22 @@ async def register(body: RegisterBody):
 
 @api.post("/auth/login")
 async def login(body: LoginBody):
-    email = body.email.lower()
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_access_token(user["id"], email)
-    user.pop("password_hash")
-    user.pop("_id", None)
-    return {"token": token, "user": user}
+    try:
+        logger.info(f"Login attempt: {body.email}")
+        email = body.email.lower()
+        user = await db.users.find_one({"email": email})
+        logger.info(f"User found: {user is not None}")
+        if not user or not verify_password(body.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        logger.info(f"Password verified, creating token...")
+        token = create_access_token(user["id"], email)
+        user.pop("password_hash")
+        user.pop("_id", None)
+        logger.info(f"Login successful for {email}")
+        return {"token": token, "user": user}
+    except Exception as e:
+        logger.error(f"Login error: {e}", exc_info=True)
+        raise
 
 
 @api.get("/auth/me")
@@ -396,7 +394,8 @@ async def create_dataset(body: DatasetCreate, user: dict = Depends(current_user)
     }
     await db.datasets.insert_one(d)
 
-    # Copy labels from baseline or instantiate from A2L template
+    # Copy labels only when deriving from an explicit baseline.
+    # For fresh datasets, keep labels empty until user explicitly imports them.
     if baseline:
         base_labels = await db.labels.find({"dataset_id": baseline["id"]}, {"_id": 0}).to_list(10000)
         new_labels = []
@@ -410,8 +409,6 @@ async def create_dataset(body: DatasetCreate, user: dict = Depends(current_user)
             new_labels.append(nl)
         if new_labels:
             await db.labels.insert_many(new_labels)
-    else:
-        await db.labels.insert_many(_make_labels(d["id"], all_complete=False))
 
     await log_audit("dataset", d["id"], "CREATED", user["email"],
                     new_value=f"{d['dataset_name']} [{body.creation_mode}]",
@@ -422,12 +419,31 @@ async def create_dataset(body: DatasetCreate, user: dict = Depends(current_user)
 
 @api.post("/datasets/{ds_id}/technical-validate")
 async def technical_validate(ds_id: str, user: dict = Depends(current_user)):
+    """
+    Run technical validation on a dataset.
+    - If dataset has 0 labels: returns PASS (no validation needed yet)
+    - If dataset has labels: validates them and returns PASS/FAIL with errors
+    """
     d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Not found")
     if d["lifecycle_state"] in ("RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"):
         raise HTTPException(400, "Dataset is locked")
+    
     labels = await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+    
+    # If no labels, validation passes (add warning)
+    if not labels:
+        status = "PASS"
+        errors = ["⚠️  No labels defined yet — add labels before submitting for approval"]
+        await db.datasets.update_one(
+            {"id": ds_id},
+            {"$set": {"technical_validation_status": status, "technical_validation_summary": errors, "last_modified_date": _now()}},
+        )
+        await log_audit("dataset", ds_id, f"TECH_VALIDATION_{status}", user["email"], new_value=status)
+        return {"status": status, "errors": errors}
+    
+    # Validate labels
     errors = []
     for l in labels:
         if l.get("confidence_status") == "EMPTY":
@@ -459,13 +475,58 @@ async def submit_approval(ds_id: str, user: dict = Depends(current_user)):
         raise HTTPException(404, "Not found")
     if d["lifecycle_state"] != "EDIT":
         raise HTTPException(400, f"Dataset must be in EDIT state (currently {d['lifecycle_state']})")
-    if d["technical_validation_status"] != "PASS":
-        raise HTTPException(400, "Technical validation must PASS before submission")
     if not d["changelog_summary"]:
         raise HTTPException(400, "Changelog summary is required")
     if not d["review"].get("vnv_report_reference"):
-        # Auto-initialize placeholder — rule says V&V report must be attached; enforce here
         raise HTTPException(400, "V&V report reference must be attached before submission")
+    
+    # Auto-run technical validation if not run yet
+    if d.get("technical_validation_status") in (None, "NOT_RUN"):
+        # Call technical_validate logic inline
+        labels = await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+        
+        if not labels:
+            # No labels — pass validation
+            validation_status = "PASS"
+            validation_errors = ["⚠️  No labels defined yet — add labels before submitting for approval"]
+        else:
+            # Validate labels
+            validation_errors = []
+            for l in labels:
+                if l.get("confidence_status") == "EMPTY":
+                    validation_errors.append(f"{l['label_name']}: confidence is EMPTY")
+                if l.get("regulatory_relevance") == "YES" and not l.get("change_justification"):
+                    validation_errors.append(f"{l['label_name']}: regulatory-relevant label missing change justification")
+                if l.get("regulatory_relevance") == "YES" and l.get("parametrizable_in_customer") == "YES" \
+                        and not l.get("parametrizable_override_justification"):
+                    validation_errors.append(f"{l['label_name']}: regulatory + customer-parametrizable requires override justification")
+            if d["deployment_context"] == "PRODUCTION":
+                undoc = [l["label_name"] for l in labels if l.get("regulatory_relevance") == "YES" and l.get("confidence_status") != "DOCUMENTED"]
+                for name in undoc:
+                    validation_errors.append(f"{name}: PRODUCTION context requires regulatory-relevant labels DOCUMENTED")
+            
+            validation_status = "PASS" if not validation_errors else "FAIL"
+        
+        # Update dataset with validation results
+        await db.datasets.update_one(
+            {"id": ds_id},
+            {"$set": {
+                "technical_validation_status": validation_status,
+                "technical_validation_summary": validation_errors,
+                "last_modified_date": _now()
+            }},
+        )
+        await log_audit("dataset", ds_id, f"TECH_VALIDATION_{validation_status}", user["email"], new_value=validation_status)
+        
+        # Check if validation passed
+        if validation_status == "FAIL":
+            raise HTTPException(400, f"Technical validation FAILED — fix {len(validation_errors)} issue(s) first")
+    else:
+        # Validation already run — check if it passed
+        if d["technical_validation_status"] != "PASS":
+            raise HTTPException(400, "Technical validation must PASS before submission")
+    
+    # Proceed with approval submission
     await db.datasets.update_one(
         {"id": ds_id},
         {"$set": {
@@ -679,6 +740,31 @@ async def derive_post_sales(ds_id: str, body: DeriveBody, user: dict = Depends(c
 @api.get("/datasets/{ds_id}/labels")
 async def list_labels(ds_id: str, user: dict = Depends(current_user)):
     return await db.labels.find({"dataset_id": ds_id}, {"_id": 0}).to_list(10000)
+
+
+@api.post("/datasets/{ds_id}/labels/import-defaults")
+async def import_default_labels(ds_id: str, user: dict = Depends(current_user)):
+    """Explicit action: import default template labels into a dataset."""
+    require_role(user, "Calibration_Engineer", "Post_Sales_Engineer")
+    d = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    if d["lifecycle_state"] in ("RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"):
+        raise HTTPException(400, "Dataset is read-only")
+
+    existing = await db.labels.count_documents({"dataset_id": ds_id})
+    if existing > 0:
+        raise HTTPException(400, f"Dataset already has {existing} labels")
+
+    labels = _make_labels(ds_id, all_complete=False)
+    if labels:
+        await db.labels.insert_many(labels)
+    await db.datasets.update_one(
+        {"id": ds_id},
+        {"$set": {"last_modified_date": _now(), "technical_validation_status": "NOT_RUN", "technical_validation_summary": []}},
+    )
+    await log_audit("dataset", ds_id, "DEFAULT_LABELS_IMPORTED", user["email"], new_value=f"{len(labels)} labels")
+    return {"ok": True, "inserted": len(labels)}
 
 
 def _enforce_label_rules(dataset: dict, label: dict, patch: dict):
@@ -979,6 +1065,15 @@ async def reseed(user: dict = Depends(current_user)):
 
 # =====================================================
 app.include_router(api)
+
+# ── v1 API Routers ──────────────────────────────────
+api_v1 = APIRouter(prefix="/api/v1")
+api_v1.include_router(sw_releases.router)
+api_v1.include_router(datasets.router)
+api_v1.include_router(vehicle_sw_ids.router)
+api_v1.include_router(traceability_router.router)
+api_v1.include_router(a2l.router)
+app.include_router(api_v1)
 
 # ── Visualization module (non-destructive extension) ──────────────────────────
 try:

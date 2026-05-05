@@ -2,15 +2,33 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
 from datetime import datetime, timezone
 import uuid
+from enum import Enum
 
+# ------- Calibration Files -------
+
+class CalibrationFileType(str, Enum):
+    A2L = "A2L"
+    DCM = "DCM"
+    S37 = "S37"
+    OTHER = "OTHER"
 
 def _uuid() -> str:
     return str(uuid.uuid4())
 
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+class CalibrationFile(BaseModel):
+    id: str = Field(default_factory=_uuid)
+    filename: str
+    filetype: CalibrationFileType
+    upload_date: str = Field(default_factory=_now)
+    uploaded_by: str
+    description: str = ""
+    related_software_release_id: Optional[str] = None
+    related_dataset_id: Optional[str] = None
+    gridfs_id: Optional[str] = None  # Si se almacena en GridFS
+    metadata: dict = Field(default_factory=dict)
 
 # ------- Roles -------
 ROLES = [
@@ -41,7 +59,6 @@ LabelConfidence = Literal["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"]
 LabelLevel = Literal["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"]
 YesNo = Literal["YES", "NO"]
 
-
 # ------- Users -------
 class UserPublic(BaseModel):
     id: str
@@ -51,22 +68,18 @@ class UserPublic(BaseModel):
     active_role: Optional[str] = None
     created_at: str
 
-
 class RegisterBody(BaseModel):
     email: EmailStr
     password: str
     name: str
     roles: Optional[List[str]] = None
 
-
 class LoginBody(BaseModel):
     email: EmailStr
     password: str
 
-
 class SwitchRoleBody(BaseModel):
     role: str
-
 
 # ------- ECU -------
 class ECU(BaseModel):
@@ -74,7 +87,6 @@ class ECU(BaseModel):
     name: str
     type: str
     active: bool = True
-
 
 # ------- Software Release -------
 class SoftwareRelease(BaseModel):
@@ -92,7 +104,6 @@ class SoftwareRelease(BaseModel):
     other_artefacts: List[str] = []
     validation_log: List[dict] = []
 
-
 class SoftwareReleaseCreate(BaseModel):
     ecu_id: str
     software_release_identifier: str
@@ -103,7 +114,6 @@ class SoftwareReleaseCreate(BaseModel):
     dbc_reference: Optional[str] = None
     dtc_list_reference: Optional[str] = None
     other_artefacts: List[str] = []
-
 
 # ------- Dataset -------
 class ReviewBlock(BaseModel):
@@ -119,7 +129,6 @@ class ReviewBlock(BaseModel):
     approval_decision: Optional[Literal["APPROVED", "REJECTED"]] = None
     approval_date: Optional[str] = None
     approved_by: Optional[str] = None
-
 
 class Dataset(BaseModel):
     id: str = Field(default_factory=_uuid)
@@ -152,7 +161,6 @@ class Dataset(BaseModel):
     deprecation_date: Optional[str] = None
     is_post_sales_derived: bool = False
 
-
 class DatasetCreate(BaseModel):
     dataset_name: str
     software_release_id: str
@@ -162,7 +170,6 @@ class DatasetCreate(BaseModel):
     vin: Optional[str] = None
     baseline_dataset_id: Optional[str] = None
     changelog_summary: str = ""
-
 
 # ------- Label -------
 class Label(BaseModel):
@@ -185,7 +192,6 @@ class Label(BaseModel):
     imported_from_a2l: bool = True
     modified: bool = False
 
-
 class LabelUpdate(BaseModel):
     current_value: Optional[str] = None
     level: Optional[LabelLevel] = None
@@ -196,7 +202,6 @@ class LabelUpdate(BaseModel):
     parametrizable_override_justification: Optional[str] = None
     change_justification: Optional[str] = None
     comments: Optional[str] = None
-
 
 # ------- Vehicle_SW_ID -------
 class VehicleSWID(BaseModel):
@@ -210,14 +215,12 @@ class VehicleSWID(BaseModel):
     creation_date: str = Field(default_factory=_now)
     created_by: str = ""
 
-
 class VehicleSWIDCreate(BaseModel):
     dataset_id: str
     variant_id: Optional[str] = None
     vin: Optional[str] = None
     manufacturing_order_reference: Optional[str] = None
     service_case_reference: Optional[str] = None
-
 
 # ------- Audit Log -------
 class AuditEntry(BaseModel):
@@ -231,7 +234,6 @@ class AuditEntry(BaseModel):
     date: str = Field(default_factory=_now)
     justification: str = ""
 
-
 # ------- Action bodies -------
 class ReviewUpdate(BaseModel):
     domain: Literal["technical", "project_configuration", "regulatory", "vnv"]
@@ -239,17 +241,14 @@ class ReviewUpdate(BaseModel):
     comments: Optional[str] = None
     vnv_report_reference: Optional[str] = None
 
-
 class ReleaseSelectBody(BaseModel):
     selected_deployment_context: DeploymentContext
     selected_variant_id: Optional[str] = None
     selection_justification: str
 
-
 class DeprecateBody(BaseModel):
     justification: str
     replacement_dataset_id: Optional[str] = None
-
 
 class DeriveBody(BaseModel):
     dataset_name: str
@@ -258,7 +257,26 @@ class DeriveBody(BaseModel):
     service_case_reference: Optional[str] = None
     changelog_summary: str = ""
 
-
 class LabelMassUpdate(BaseModel):
     label_ids: List[str]
     patch: LabelUpdate
+
+# ------- A2L Upload/Parse -------
+class A2LUploadResponse(BaseModel):
+    filename: str
+    size_bytes: int
+    uploaded_at: str
+
+class A2LParseResult(BaseModel):
+    project_name: str
+    version: str
+    total_parameters: int
+    scalars: List[dict] = []
+    maps: List[dict] = []
+    curves: List[dict] = []
+
+class A2LFileInfo(BaseModel):
+    filename: Optional[str] = None
+    size_bytes: int = 0
+    uploaded_at: Optional[str] = None
+    has_file: bool = False

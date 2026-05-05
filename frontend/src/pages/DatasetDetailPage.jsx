@@ -281,12 +281,13 @@ export default function DatasetDetailPage() {
   };
 
   // Readiness checklist for submission
+  // Technical validation: will auto-run on submit if NOT_RUN, so only fail if explicitly FAIL
   const checklist = [
     { ok: labels.every((l) => l.confidence_status !== "EMPTY"), label: "All labels have confidence status" },
     { ok: regulatoryLabels.every((l) => !!l.change_justification), label: "Regulatory labels have change justification" },
     { ok: !!d.changelog_summary, label: "Changelog summary present" },
     { ok: !!d.review?.vnv_report_reference, label: "V&V report attached" },
-    { ok: d.technical_validation_status === "PASS", label: "Technical validation PASS" },
+    { ok: d.technical_validation_status !== "FAIL", label: "Technical validation" + (d.technical_validation_status === "PASS" ? " PASS" : d.technical_validation_status === "FAIL" ? " FAILED" : " (will run on submit)") },
   ];
   const readyToSubmit = checklist.every((c) => c.ok);
 
@@ -441,6 +442,15 @@ export default function DatasetDetailPage() {
                       <li key={i} className="text-xs font-mono text-red-800">{err}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+              {d.technical_validation_status === "NOT_RUN" && (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Technical validation not run yet
+                  </div>
+                  <p className="text-xs text-amber-700">Click "Run technical validation" to validate, or it will run automatically when you submit for approval.</p>
                 </div>
               )}
               {d.lifecycle_state === "EDIT" && (

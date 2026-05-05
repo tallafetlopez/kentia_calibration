@@ -13,6 +13,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Error interceptor with logging
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || "unknown";
+    const method = error.config?.method?.toUpperCase() || "unknown";
+    const status = error.response?.status || "network error";
+
+    console.error(
+      `❌ API Error [${method} ${url}]: Status ${status}`,
+      error.response?.data || error.message
+    );
+
+    return Promise.reject(error);
+  }
+);
+
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Something went wrong. Please try again.";
   if (typeof detail === "string") return detail;
@@ -24,3 +41,4 @@ export function formatApiErrorDetail(detail) {
   if (detail && typeof detail.msg === "string") return detail.msg;
   return String(detail);
 }
+
