@@ -5,8 +5,18 @@ import { toast } from "sonner";
 import { LIFECYCLE_STATES, DEPLOYMENT_CONTEXTS, CREATION_MODES, LifecycleBadge, fmtDate } from "../lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { Label } from "../components/ui/label";
-import { Search, Plus, Lock, ClipboardList, Download, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, Plus, Lock, ClipboardList, Download, RefreshCw, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
 /* ── Calibration Change Log panel ─────────────────────────────────────────── */
@@ -238,6 +248,9 @@ export default function DatasetsPage() {
   const [mode, setMode] = useState("ALL");
   const [swr, setSwr] = useState("ALL");
   const [openCreate, setOpenCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState({
     dataset_name: "",
     software_release_id: "",
@@ -290,6 +303,22 @@ export default function DatasetsPage() {
       setForm({ ...form, dataset_name: "", variant_id: "", vin: "", baseline_dataset_id: "", changelog_summary: "" });
       load();
     } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+  };
+
+  const deleteDataset = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await api.delete(`/datasets/${deleteTarget.id}`);
+      toast.success(`Deleted ${deleteTarget.dataset_name}`);
+      setDeleteTarget(null);
+      load();
+    } catch (e) {
+      setDeleteError(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const baselines = items.filter((i) => ["RELEASED", "APPROVED"].includes(i.lifecycle_state));
@@ -459,7 +488,21 @@ export default function DatasetsPage() {
                   <td style={{ fontSize: 11 }}>{d.author}</td>
                   <td style={{ fontFamily: "monospace", fontSize: 10, color: "#8A8886" }}>{fmtDate(d.last_modified_date)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }} data-testid={`ds-open-${d.dataset_name}`}>Open →</Link>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      {d.lifecycle_state === "EDIT" && (
+                        <button
+                          type="button"
+                          className="ms-btn"
+                          style={{ height: 26, width: 26, padding: 0, color: "#B42318", borderColor: "#F4ACAC" }}
+                          onClick={() => { setDeleteError(""); setDeleteTarget(d); }}
+                          data-testid={`ds-delete-${d.id}`}
+                          aria-label={`Delete ${d.dataset_name}`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                      <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }} data-testid={`ds-open-${d.dataset_name}`}>Open →</Link>
+                    </div>
                   </td>
                 </tr>
               );
@@ -471,6 +514,22 @@ export default function DatasetsPage() {
 
       {/* ── Calibration Change Log ─────────────────────────────────────────── */}
       <ChangeLogPanel datasets={items} sr={sr} />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete dataset {deleteTarget?.dataset_name}?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <div style={{ fontSize: 12, color: "#B42318" }}>{deleteError}</div>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); deleteDataset(); }} disabled={deleteBusy} className="bg-red-600 text-white hover:bg-red-700 focus:bg-red-700">
+              {deleteBusy ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );

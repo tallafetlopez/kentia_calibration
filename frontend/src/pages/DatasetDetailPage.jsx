@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
@@ -10,6 +10,22 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Checkbox } from "../components/ui/checkbox";
 import {
   ArrowLeft,
@@ -26,9 +42,11 @@ import {
   Copy as CopyIcon,
   Trash2,
   Pencil,
+  MoreHorizontal,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import LabelsGrid from "../components/LabelsGrid";
+import ChartsTab from "../components/ChartsTab";
 
 const REVIEW_DOMAINS = [
   { key: "technical", label: "Technical Review", roles: ["Calibration_Engineer", "PI_Engineering_Manager"] },
@@ -48,106 +66,6 @@ function LabelBadge({ children, tone }) {
   return <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-mono border ${map[tone]}`}>{children}</span>;
 }
 
-// ── Chart tab ─────────────────────────────────────────────────────────────────
-const VIZ_MODES = [
-  { value: "surface", label: "3D Surface" },
-  { value: "heatmap", label: "Heatmap" },
-  { value: "overlay", label: "Overlay (compare)" },
-  { value: "delta", label: "Delta (compare)" },
-];
-
-function ChartTab({ datasetId, allDatasets }) {
-  const [mode, setMode] = useState("heatmap");
-  const [compareId, setCompareId] = useState("");
-  const [figData, setFigData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const plotRef = useRef(null);
-
-  const loadChart = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { mode };
-      if (compareId) params.compare_id = compareId;
-      const { data } = await api.get(`/viz/calibration-map/${datasetId}/json`, { params });
-      const parsed = typeof data === "string" ? JSON.parse(data) : data;
-      setFigData(parsed);
-    } catch (e) {
-      setError(e.response?.data?.detail || e.message || "Error loading chart");
-    } finally {
-      setLoading(false);
-    }
-  }, [datasetId, mode, compareId]);
-
-  useEffect(() => { loadChart(); }, [loadChart]);
-
-  useEffect(() => {
-    if (!figData || !plotRef.current) return;
-    import("plotly.js-dist-min").then((Plotly) => {
-      Plotly.react(plotRef.current, figData.data, {
-        ...figData.layout,
-        autosize: true,
-        margin: { l: 60, r: 20, t: 50, b: 60 },
-        paper_bgcolor: "rgba(0,0,0,0)",
-        plot_bgcolor: "rgba(0,0,0,0)",
-        font: { family: "Inter, sans-serif", size: 11 },
-      }, { displayModeBar: true, scrollZoom: true, responsive: true });
-    });
-  }, [figData]);
-
-  const needsCompare = mode === "overlay" || mode === "delta";
-
-  return (
-    <div className="space-y-4">
-      <div className="panel p-4 flex flex-wrap items-end gap-3">
-        <div>
-          <div className="tiny-label mb-1">Mode</div>
-          <Select value={mode} onValueChange={setMode}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {VIZ_MODES.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        {needsCompare && (
-          <div>
-            <div className="tiny-label mb-1">Compare with</div>
-            <Select value={compareId} onValueChange={setCompareId}>
-              <SelectTrigger className="w-56"><SelectValue placeholder="Pick a dataset…" /></SelectTrigger>
-              <SelectContent>
-                {allDatasets.map((x) => <SelectItem key={x.id} value={x.id}>{x.dataset_name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        <Button variant="outline" onClick={loadChart} disabled={loading}>
-          {loading ? "Loading…" : "Refresh chart"}
-        </Button>
-      </div>
-
-      {error && (
-        <div className="panel p-4 text-sm text-red-700 bg-red-50 border-red-200 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
-        </div>
-      )}
-
-      {loading && (
-        <div className="panel p-12 flex justify-center items-center text-sm text-slate-500">
-          Building chart…
-        </div>
-      )}
-
-      <div
-        ref={plotRef}
-        style={{ width: "100%", height: "520px", display: figData && !loading ? "block" : "none" }}
-        className="panel"
-      />
-      )}
-    </div>
-  );
-}
-
 export default function DatasetDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -162,14 +80,41 @@ export default function DatasetDetailPage() {
   const [otherDsId, setOtherDsId] = useState("");
   const [diff, setDiff] = useState(null);
   const [allDatasets, setAllDatasets] = useState([]);
+  const [renameMode, setRenameMode] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // DCM import state
+  const [dcmSrSummary, setDcmSrSummary] = useState(null);
+  const [dcmImporting, setDcmImporting] = useState(false);
+  const [dcmImportResult, setDcmImportResult] = useState(null);
+  const [dcmSelectOpen, setDcmSelectOpen] = useState(false);
+  const [dcmAllScalars, setDcmAllScalars] = useState([]);
+  const [dcmSelected, setDcmSelected] = useState(new Set());
+  const [dcmSearchQ, setDcmSearchQ] = useState("");
 
   const load = useCallback(async () => {
     const { data } = await api.get(`/datasets/${id}`);
     setBundle(data);
+    setRenameValue(data.dataset?.dataset_name || "");
     const lbls = await api.get(`/datasets/${id}/labels`);
     setLabels(lbls.data);
     const a = await api.get(`/audit-log`, { params: { entity_id: id } });
     setAudit(a.data);
+    // Fetch DCM summary from SW Release if available
+    const srId = data.software_release?.id;
+    if (srId) {
+      try {
+        const dcmRes = await api.get(`/v1/sw-releases/${srId}/dcm/summary`);
+        setDcmSrSummary({ ...dcmRes.data, sw_release_id: srId });
+      } catch (_) {
+        setDcmSrSummary(null);
+      }
+    }
   }, [id]);
 
   useEffect(() => { load(); api.get("/datasets").then((r) => setAllDatasets(r.data)); }, [load]);
@@ -181,6 +126,7 @@ export default function DatasetDetailPage() {
   const derived = bundle.derived_datasets || [];
   const vAssignments = bundle.vehicle_assignments || [];
   const readOnly = ["RELEASE_CANDIDATE", "RELEASED", "DEPRECATED"].includes(d.lifecycle_state);
+  const isEditState = d.lifecycle_state === "EDIT";
 
   // computed
   const regulatoryLabels = labels.filter((l) => l.regulatory_relevance === "YES");
@@ -280,6 +226,110 @@ export default function DatasetDetailPage() {
     setDiff(data);
   };
 
+  const startRename = () => {
+    setRenameMode(true);
+    setRenameValue(d.dataset_name || "");
+    setRenameError("");
+  };
+
+  const cancelRename = () => {
+    setRenameMode(false);
+    setRenameValue(d.dataset_name || "");
+    setRenameError("");
+  };
+
+  const saveRename = async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenameError("Dataset name cannot be empty");
+      return;
+    }
+    setRenameSaving(true);
+    setRenameError("");
+    try {
+      const { data } = await api.patch(`/datasets/${id}/rename`, { name: trimmed });
+      setBundle((prev) => ({ ...prev, dataset: data }));
+      setAllDatasets((prev) => prev.map((item) => (item.id === id ? data : item)));
+      setRenameMode(false);
+      toast.success("Dataset renamed");
+      const a = await api.get(`/audit-log`, { params: { entity_id: id } });
+      setAudit(a.data);
+    } catch (e) {
+      setRenameError(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await api.delete(`/datasets/${id}`);
+      toast.success("Dataset deleted");
+      navigate("/datasets");
+    } catch (e) {
+      setDeleteError(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const importAllScalars = async () => {
+    if (!dcmSrSummary) return;
+    setDcmImporting(true);
+    setDcmImportResult(null);
+    try {
+      const { data } = await api.post(`/v1/datasets/${id}/import-from-dcm`, {
+        sw_release_id: dcmSrSummary.sw_release_id,
+        parameter_names: "all_scalars",
+      });
+      setDcmImportResult(data);
+      toast.success(`✓ ${data.imported} labels imported`);
+      load();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setDcmImporting(false);
+    }
+  };
+
+  const openSelectModal = async () => {
+    setDcmSelectOpen(true);
+    setDcmSelected(new Set());
+    setDcmSearchQ("");
+    if (!dcmAllScalars.length && dcmSrSummary) {
+      try {
+        const { data } = await api.get(`/v1/sw-releases/${dcmSrSummary.sw_release_id}/dcm/parameters`, {
+          params: { type: "scalar", limit: 5000 },
+        });
+        setDcmAllScalars(data.items);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  const importSelected = async () => {
+    if (!dcmSrSummary || !dcmSelected.size) return;
+    setDcmImporting(true);
+    setDcmImportResult(null);
+    try {
+      const { data } = await api.post(`/v1/datasets/${id}/import-from-dcm`, {
+        sw_release_id: dcmSrSummary.sw_release_id,
+        parameter_names: [...dcmSelected],
+      });
+      setDcmImportResult(data);
+      setDcmSelectOpen(false);
+      toast.success(`✓ ${data.imported} labels imported`);
+      load();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setDcmImporting(false);
+    }
+  };
+
   // Readiness checklist for submission
   // Technical validation: will auto-run on submit if NOT_RUN, so only fail if explicitly FAIL
   const checklist = [
@@ -309,9 +359,31 @@ export default function DatasetDetailPage() {
               {d.locked && <span className="lc-badge lc-RELEASE_CANDIDATE"><Lock className="w-3 h-3" /> LOCKED</span>}
               {d.is_post_sales_derived && <span className="lc-badge lc-EDIT">POST-SALES DERIVED</span>}
             </div>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>
-              {d.dataset_name}
-            </h1>
+            {renameMode ? (
+              <div className="mt-3 flex flex-wrap items-start gap-3">
+                <div className="min-w-[280px] flex-1">
+                  <Input
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    className="h-11 text-lg font-semibold"
+                    data-testid="dataset-rename-input"
+                  />
+                  {renameError && <div className="mt-2 text-sm text-red-600">{renameError}</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button onClick={saveRename} disabled={renameSaving} data-testid="dataset-rename-save">
+                    {renameSaving ? "Saving..." : "Save"}
+                  </Button>
+                  <Button variant="outline" onClick={cancelRename} disabled={renameSaving} data-testid="dataset-rename-cancel">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>
+                {d.dataset_name}
+              </h1>
+            )}
             <div className="mt-1 text-sm text-slate-600">{d.changelog_summary || "—"}</div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono text-slate-600">
               <div><span className="text-slate-400">SW · </span>{sr?.software_release_identifier} v{sr?.version}</div>
@@ -324,6 +396,23 @@ export default function DatasetDetailPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 items-end">
+            {isEditState && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-9 w-9" data-testid="dataset-actions-menu">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={startRename} data-testid="dataset-actions-rename">
+                    <Pencil className="w-4 h-4" /> Rename dataset
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setDeleteError(""); setDeleteOpen(true); }} className="text-red-600 focus:text-red-700" data-testid="dataset-actions-delete">
+                    <Trash2 className="w-4 h-4" /> Delete dataset
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {readOnly && (
               <div className="flex items-center gap-2 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-md px-3 py-2">
                 <Lock className="w-4 h-4" /> Dataset is {d.lifecycle_state} — read-only
@@ -503,6 +592,44 @@ export default function DatasetDetailPage() {
               </ul>
             </div>
           )}
+
+          {/* DCM IMPORT section */}
+          {dcmSrSummary && isEditState && (
+            <div className="panel p-5">
+              <div className="tiny-label mb-3">Import from DCM</div>
+              <p className="text-sm text-slate-600 mb-3">
+                <span className="font-mono text-slate-800">{sr?.software_release_identifier}</span>{" "}
+                has DCM:{" "}
+                <span className="font-semibold">{dcmSrSummary.summary?.total_scalars?.toLocaleString()} scalars</span> available
+              </p>
+              {dcmImportResult && (
+                <div className="mb-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+                  ✓ {dcmImportResult.imported} labels imported
+                  {dcmImportResult.skipped > 0 && `, ${dcmImportResult.skipped} skipped (already exist)`}
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={importAllScalars}
+                  disabled={dcmImporting || !canEditDs}
+                  data-testid="btn-dcm-import-all"
+                >
+                  {dcmImporting ? "Importing…" : "Import all scalars as labels"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openSelectModal}
+                  disabled={dcmImporting || !canEditDs}
+                  data-testid="btn-dcm-select"
+                >
+                  Select parameters to import
+                </Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* Labels — Excel-style grid */}
@@ -649,7 +776,7 @@ export default function DatasetDetailPage() {
 
         {/* Charts */}
         <TabsContent value="charts" className="mt-6">
-          <ChartTab datasetId={id} allDatasets={allDatasets.filter((x) => x.id !== id)} />
+          <ChartsTab datasetId={id} datasetName={d.dataset_name} labelsCount={labels.length} />
         </TabsContent>
       </Tabs>
 
@@ -682,6 +809,95 @@ export default function DatasetDetailPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>Attach V&V report</DialogTitle></DialogHeader>
           <AttachVnvForm onSubmit={attachVnv} />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete dataset {d.dataset_name}?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <div className="text-sm text-red-600">{deleteError}</div>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmDelete(); }} disabled={deleteBusy} className="bg-red-600 text-white hover:bg-red-700 focus:bg-red-700">
+              {deleteBusy ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* DCM Select parameters modal */}
+      <Dialog open={dcmSelectOpen} onOpenChange={setDcmSelectOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select DCM parameters to import</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mb-3">
+            <input
+              value={dcmSearchQ}
+              onChange={(e) => setDcmSearchQ(e.target.value)}
+              placeholder="Search parameters…"
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1 focus:outline-none focus:ring-1 focus:ring-gray-400"
+            />
+            <span className="text-xs text-slate-500">{dcmSelected.size} selected</span>
+          </div>
+          <div className="max-h-96 overflow-auto border border-slate-200 rounded">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 sticky top-0">
+                <tr>
+                  <th className="w-8 px-2 py-2"></th>
+                  <th className="text-left px-2 py-2 font-semibold text-slate-600">Name</th>
+                  <th className="text-left px-2 py-2 font-semibold text-slate-600">Description</th>
+                  <th className="text-left px-2 py-2 font-semibold text-slate-600">Unit</th>
+                  <th className="text-right px-2 py-2 font-semibold text-slate-600">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dcmAllScalars
+                  .filter((p) => {
+                    const q = dcmSearchQ.toLowerCase();
+                    return !q || p.name.toLowerCase().includes(q) || p.long_name.toLowerCase().includes(q);
+                  })
+                  .slice(0, 300)
+                  .map((p) => (
+                    <tr
+                      key={p.name}
+                      className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50 ${dcmSelected.has(p.name) ? "bg-brand/5" : ""}`}
+                      onClick={() => {
+                        setDcmSelected((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(p.name)) next.delete(p.name);
+                          else next.add(p.name);
+                          return next;
+                        });
+                      }}
+                    >
+                      <td className="px-2 py-1.5 text-center">
+                        <Checkbox checked={dcmSelected.has(p.name)} readOnly />
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-slate-900">{p.name}</td>
+                      <td className="px-2 py-1.5 text-slate-500 max-w-[200px] truncate">{p.long_name}</td>
+                      <td className="px-2 py-1.5 font-mono text-slate-500">{p.unit || "—"}</td>
+                      <td className="px-2 py-1.5 text-right font-mono text-slate-700">
+                        {typeof p.value_preview === "number" ? p.value_preview.toPrecision(5) : String(p.value_preview ?? "—")}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDcmSelectOpen(false)}>Cancel</Button>
+            <Button
+              onClick={importSelected}
+              disabled={!dcmSelected.size || dcmImporting}
+              className="bg-slate-900 hover:bg-slate-800"
+            >
+              {dcmImporting ? "Importing…" : `Import selected (${dcmSelected.size})`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

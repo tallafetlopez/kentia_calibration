@@ -8,12 +8,20 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckCircle2, XCircle, FileCode2, ArrowLeft, ShieldCheck, AlertTriangle } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import A2LParametersTab from "../components/A2LParametersTab";
+import A2LMapsTab from "../components/A2LMapsTab";
+import A2LUploadTab from "../components/A2LUploadTab";
+import DatasetLifecycleDonut from "../components/DatasetLifecycleDonut";
+import LabelCoverageBar from "../components/LabelCoverageBar";
 
 export default function SoftwareReleaseDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const [sr, setSr] = useState(null);
   const [patch, setPatch] = useState({});
+  const [a2lData, setA2lData] = useState(null);
+  const [a2lFileInfo, setA2lFileInfo] = useState(null);
+  const [a2lTab, setA2lTab] = useState("parameters");
 
   const load = useCallback(async () => {
     const { data } = await api.get(`/software-releases/${id}`);
@@ -26,7 +34,21 @@ export default function SoftwareReleaseDetailPage() {
       supplier: data.supplier || "",
     });
   }, [id]);
-  useEffect(() => { load(); }, [load]);
+
+  const loadA2l = useCallback(async () => {
+    try {
+      const infoRes = await api.get(`/v1/sw-releases/${id}/a2l/info`);
+      setA2lFileInfo(infoRes.data);
+      if (infoRes.data.has_file) {
+        const parseRes = await api.get(`/v1/sw-releases/${id}/a2l/parse`);
+        setA2lData(parseRes.data);
+      }
+    } catch (err) {
+      console.warn("A2L endpoints not available:", err.message);
+    }
+  }, [id]);
+
+  useEffect(() => { load(); loadA2l(); }, [load, loadA2l]);
   if (!sr) return <div className="tiny-label pulse-slow">Loading…</div>;
 
   const canEdit = user?.roles?.includes("PD_Project_Manager");
@@ -145,6 +167,65 @@ export default function SoftwareReleaseDetailPage() {
               </div>
             ))}
             {(!sr.validation_log || sr.validation_log.length === 0) && <div className="text-xs text-slate-500">No validation runs yet.</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* A2L Viewer Section */}
+      <div className="panel overflow-hidden">
+        <div className="px-6 pt-4 pb-0">
+          <div className="tiny-label mb-3">A2L File Viewer</div>
+        </div>
+        <div className="flex border-b border-slate-200">
+          {[
+            { id: "parameters", label: "Parameters" },
+            { id: "maps", label: "Maps" },
+            { id: "upload", label: "Upload A2L" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setA2lTab(tab.id)}
+              className={`px-5 py-2.5 text-xs font-semibold transition border-b-2 -mb-px ${
+                a2lTab === tab.id
+                  ? "border-slate-900 text-slate-900"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="p-4">
+          {a2lTab === "parameters" && <A2LParametersTab a2lData={a2lData} />}
+          {a2lTab === "maps" && <A2LMapsTab a2lData={a2lData} />}
+          {a2lTab === "upload" && (
+            <A2LUploadTab
+              swReleaseId={id}
+              onUploadSuccess={async (res) => {
+                setA2lFileInfo(res);
+                try {
+                  const parseRes = await api.get(`/v1/sw-releases/${id}/a2l/parse`);
+                  setA2lData(parseRes.data);
+                } catch (e) { console.error(e); }
+                setA2lTab("parameters");
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ── RELEASE OVERVIEW ── */}
+      <div className="panel overflow-hidden">
+        <div className="px-6 pt-5 pb-0">
+          <div className="tiny-label mb-1">Release Overview</div>
+          <p className="text-xs text-slate-500 mb-4">Dataset lifecycle distribution and label coverage for this release.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-0 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
+          <div className="p-4">
+            <DatasetLifecycleDonut swReleaseId={id} />
+          </div>
+          <div className="p-4">
+            <LabelCoverageBar swReleaseId={id} />
           </div>
         </div>
       </div>

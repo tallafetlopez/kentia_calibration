@@ -21,10 +21,13 @@ export default function LoginPage() {
       navigate("/");
     } catch (e) {
       console.error("❌ Login error:", e);
+      const detail = e?.response?.data?.detail;
       const errorMsg =
-        formatApiErrorDetail(e.response?.data?.detail) ||
-        e.message ||
-        "Login failed. Please check your credentials and try again.";
+        detail != null
+          ? formatApiErrorDetail(detail)
+          : e?.code === "ERR_NETWORK"
+            ? "Cannot connect to backend. Verify API is running on http://localhost:8000."
+            : e?.message || "Login failed. Please check your credentials and try again.";
       setErr(errorMsg);
     } finally {
       setBusy(false);

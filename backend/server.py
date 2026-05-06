@@ -1,11 +1,19 @@
 from dotenv import load_dotenv
 from pathlib import Path
+import sys
+
+# Allow running with either "uvicorn server:app" (from backend/) or
+# "uvicorn backend.server:app" (from repo root).
+ROOT_DIR = Path(__file__).parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from auth_utils import verify_password, create_access_token, get_current_user, hash_password
 from seed import seed_all, _make_labels
 from routers import sw_releases, datasets, vehicle_sw_ids, a2l
 from routers import traceability as traceability_router
+from routers import dcm as dcm_router
 
-ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
@@ -332,6 +340,86 @@ async def get_dataset(ds_id: str, user: dict = Depends(current_user)):
         "derived_datasets": derived,
         "vehicle_assignments": vehicle_assignments,
     }
+
+
+@api.patch("/datasets/{ds_id}/rename")
+async def rename_dataset(ds_id: str, body: dict, user: dict = Depends(current_user)):
+    require_role(user, "Calibration_Engineer", "Post_Sales_Engineer")
+    dataset = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(404, "Dataset not found")
+    if dataset.get("lifecycle_state") != "EDIT":
+        raise HTTPException(400, "Only EDIT datasets can be renamed")
+
+    new_name = str(body.get("name") or "").strip()
+    if not new_name:
+        raise HTTPException(400, "Dataset name cannot be empty")
+
+    duplicate = await db.datasets.find_one(
+        {
+            "software_release_id": dataset["software_release_id"],
+            "dataset_name": new_name,
+            "id": {"$ne": ds_id},
+        },
+        {"_id": 0, "id": 1},
+    )
+    if duplicate:
+        raise HTTPException(400, "A dataset with this name already exists in the same software release")
+
+    old_name = dataset["dataset_name"]
+    updated_at = _now()
+    await db.datasets.update_one(
+        {"id": ds_id},
+        {"$set": {"dataset_name": new_name, "last_modified_date": updated_at}},
+    )
+    await db.audit_log.insert_one(
+        {
+            "id": _uuid(),
+            "entity_type": "dataset",
+            "entity_id": ds_id,
+            "action": "RENAMED",
+            "old_name": old_name,
+            "new_name": new_name,
+            "author": user["email"],
+            "timestamp": updated_at,
+            "date": updated_at,
+            "previous_value": old_name,
+            "new_value": new_name,
+            "justification": "",
+        }
+    )
+    renamed = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    return renamed
+
+
+@api.delete("/datasets/{ds_id}", status_code=204)
+async def delete_dataset(ds_id: str, user: dict = Depends(current_user)):
+    require_role(user, "Calibration_Engineer", "Post_Sales_Engineer")
+    dataset = await db.datasets.find_one({"id": ds_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(404, "Dataset not found")
+    if dataset.get("lifecycle_state") != "EDIT":
+        raise HTTPException(400, "Only EDIT datasets can be deleted")
+
+    timestamp = _now()
+    await db.datasets.delete_one({"id": ds_id})
+    await db.labels.delete_many({"dataset_id": ds_id})
+    await db.audit_log.insert_one(
+        {
+            "id": _uuid(),
+            "entity_type": "dataset",
+            "entity_id": ds_id,
+            "action": "DELETED",
+            "dataset_name": dataset["dataset_name"],
+            "author": user["email"],
+            "timestamp": timestamp,
+            "date": timestamp,
+            "previous_value": dataset["dataset_name"],
+            "new_value": None,
+            "justification": "",
+        }
+    )
+    return
 
 
 @api.post("/datasets")
@@ -1073,6 +1161,7 @@ api_v1.include_router(datasets.router)
 api_v1.include_router(vehicle_sw_ids.router)
 api_v1.include_router(traceability_router.router)
 api_v1.include_router(a2l.router)
+api_v1.include_router(dcm_router.router)
 app.include_router(api_v1)
 
 # ── Visualization module (non-destructive extension) ──────────────────────────
@@ -1084,7 +1173,16 @@ try:
 except ImportError:
     pass  # visualization deps not installed — app still works normally
 
-CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+_env_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+_default_dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002",
+]
+CORS_ORIGINS = list(dict.fromkeys([o.strip() for o in _env_cors_origins if o.strip()] + _default_dev_origins))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,

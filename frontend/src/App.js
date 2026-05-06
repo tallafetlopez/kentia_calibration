@@ -9,7 +9,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import SoftwareReleasesPage from "./pages/SoftwareReleasesPage";
-import SoftwareReleaseDetailPage from "./pages/SoftwareReleaseDetailPage";
+import SwReleaseDetailPage from "./pages/SwReleaseDetailPage";
 import DatasetsPage from "./pages/DatasetsPage";
 import DatasetDetailPage from "./pages/DatasetDetailPage";
 import ReviewCenterPage from "./pages/ReviewCenterPage";
@@ -17,6 +17,7 @@ import ReleaseCenterPage from "./pages/ReleaseCenterPage";
 import VehicleAssignmentPage from "./pages/VehicleAssignmentPage";
 import TraceabilityPage from "./pages/TraceabilityPage";
 import AdminPage from "./pages/AdminPage";
+import SwReleaseDCMViewer from "./pages/SwReleaseDCMViewer";
 import { Toaster } from "./components/ui/sonner";
 
 // Initialize dev bypass interceptors if needed
@@ -49,7 +50,15 @@ function AppContent() {
             path="/software-releases/:id"
             element={
               <ProtectedRoute>
-                <SoftwareReleaseDetailPage />
+                <SwReleaseDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/software-releases/:id/dcm"
+            element={
+              <ProtectedRoute>
+                <SwReleaseDCMViewer />
               </ProtectedRoute>
             }
           />

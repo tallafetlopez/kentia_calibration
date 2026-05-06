@@ -97,39 +97,64 @@ REACT_APP_BACKEND_URL=http://localhost:8000
 
 ---
 
-## Arranque del proyecto (paso a paso)
+## Arranque del proyecto (del tiron)
 
-### 1. Instalar dependencias Python
+### Requisitos minimos
+
+- Python 3.11
+- Node.js 18+
+- MongoDB en local (`mongodb://localhost:27017`)
+
+### Primera ejecucion (solo una vez)
 
 ```bash
+# Dependencias backend
 pip install -r backend/requirements.txt
-```
 
-### 2. Instalar dependencias Node
-
-```bash
+# Dependencias frontend
 npm install --prefix frontend
 ```
 
-### 3. Arrancar el backend (desde el directorio `backend/`)
+### Ejecucion diaria (2 terminales)
+
+**Terminal 1 (backend):**
 
 ```bash
 cd backend
 python -m uvicorn server:app --reload --host 0.0.0.0 --port 8000
 ```
 
-> El backend debe ejecutarse **desde dentro del directorio `backend/`** para que los imports relativos (`models`, `auth_utils`, `seed`) funcionen correctamente.
-
-### 4. Arrancar el frontend (desde la raíz del proyecto)
+**Terminal 2 (frontend):**
 
 ```bash
-cd ..   # volver a la raíz si estabas en backend/
 npm start --prefix frontend
 ```
 
-El frontend quedará disponible en: **http://localhost:3000**  
-El backend quedará disponible en: **http://localhost:8000**  
-La documentación interactiva de la API en: **http://localhost:8000/docs**
+URLs:
+
+- Frontend: **http://localhost:3000**
+- Backend: **http://localhost:8000**
+- Swagger: **http://localhost:8000/docs**
+
+> Nota: aunque ahora el backend tolera arranque desde raiz, se recomienda seguir arrancando desde `backend/` para mantener el flujo estable del equipo.
+
+### Diagnostico rapido si el login falla
+
+1. Verifica que backend y frontend esten levantados en los puertos 8000 y 3000.
+2. Usa la password demo en minusculas: **`password123`** (no `PASSWORD123`).
+3. Si tienes datos inconsistentes, comprueba login por API:
+
+```powershell
+$body = @{ email = 'admin@herko.dev'; password = 'password123' } | ConvertTo-Json
+Invoke-RestMethod -Uri 'http://localhost:8000/api/auth/login' -Method Post -ContentType 'application/json' -Body $body
+```
+
+4. Si el usuario demo no autenticara, reseedea usuarios desde backend:
+
+```bash
+cd backend
+python seed_users_simple.py
+```
 
 ---
 

@@ -107,7 +107,7 @@
 
 ## 📋 Tareas Futuras (NO CRÍTICAS)
 
-- [ ] Integrar componentes React en `App.jsx`
+- [x] Integrar componentes React en `App.jsx` (A2L viewer añadido a `SoftwareReleaseDetailPage`)
 - [ ] Crear tests pytest completos (`tests/test_sw_releases.py`)
 - [ ] Implementar UI para visualizar trazabilidad completa
 - [ ] Exportar datos A2L a CSV

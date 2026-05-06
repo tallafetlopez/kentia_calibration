@@ -137,7 +137,8 @@ export function AuthProvider({ children }) {
   const disableDevBypass = () => {
     localStorage.removeItem("dev_bypass");
     setDevBypass(false);
-    window.location.reload();
+    setLoading(true);
+    fetchMe();
   };
 
   return (
