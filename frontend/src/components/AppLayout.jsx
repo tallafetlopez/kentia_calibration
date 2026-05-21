@@ -4,7 +4,7 @@ import { useAuth } from "../lib/auth";
 import {
   LayoutDashboard, CircuitBoard, Database, ClipboardCheck,
   Rocket, Car, GitBranch, Settings2, LogOut, ChevronDown,
-  UserCircle2, Plus, Search, RefreshCw, Home,
+  UserCircle2, Plus, Search, RefreshCw, Home, Layers,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -39,6 +39,7 @@ const TABS = [
         label: "Tools",
         items: [
           { to: "/traceability", label: "Traceability", icon: GitBranch },
+          { to: "/work-packages", label: "WorkPackages", icon: Layers },
           { to: "/admin", label: "Admin", icon: Settings2 },
         ],
       },

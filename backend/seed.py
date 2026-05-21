@@ -56,10 +56,41 @@ A2L_LABELS_TEMPLATE = [
 ]
 
 
-def _make_labels(dataset_id: str, all_complete: bool = False):
+DEMO_WORK_PACKAGES = [
+    # (code, name, responsible, sub_wp)
+    ("AIR_ADM", "Air management admission", "BeGas", None),
+    ("AIR_VCP", "Air VCP control", "BeGas", None),
+    ("TRQ_ADM", "Torque admission", "BeGas", None),
+    ("TRQ_LIM", "Torque limitation", "HERKO", None),
+    ("FUE_DFC", "Fuel delivery control", "BeGas", None),
+    ("EXH_DPF", "Exhaust DPF management", "BeGas", None),
+    ("EXH_SCR", "Exhaust SCR/AdBlue", "BeGas", None),
+    ("OVR_OVR", "Override & customer params", "HERKO", None),
+    ("SYS_SYS", "System level parameters", "Shared", None),
+]
+
+# Label → WorkPackage assignment by prefix
+_WP_PREFIX = {
+    "InjTim": "FUE_DFC", "RailP": "FUE_DFC",
+    "EGR": "AIR_ADM", "TurboBoost": "AIR_VCP",
+    "DPF": "EXH_DPF", "SCR": "EXH_SCR",
+    "LambdaCtl": "FUE_DFC", "IdleSpd": "OVR_OVR",
+    "MaxTrq": "TRQ_LIM", "CoolantTmp": "SYS_SYS",
+    "OilPress": "SYS_SYS", "Knock": "FUE_DFC",
+    "StartAssist": "OVR_OVR", "Immobilizer": "SYS_SYS",
+}
+
+
+def _make_labels(dataset_id: str, all_complete: bool = False, wp_id_map: dict = None):
     labels = []
     for name, dtype, unit, val, level, reg, param in A2L_LABELS_TEMPLATE:
         confidence = "VALIDATED" if all_complete else ("DOCUMENTED" if reg == "YES" else "CALIBRATED")
+        # Infer WP and owner from label prefix
+        wp_code = next((v for k, v in _WP_PREFIX.items() if name.startswith(k)), None)
+        wp_id = (wp_id_map or {}).get(wp_code)
+        wp_entry = next((w for w in DEMO_WORK_PACKAGES if w[0] == wp_code), None)
+        owner = wp_entry[2] if wp_entry else "BeGas"
+        maturity = "100" if all_complete else ("75" if reg == "YES" else "25")
         labels.append(
             {
                 "id": _uuid(),
@@ -80,6 +111,10 @@ def _make_labels(dataset_id: str, all_complete: bool = False):
                 "comments": "",
                 "imported_from_a2l": True,
                 "modified": False,
+                "owner": owner,
+                "deputy": "",
+                "work_package_id": wp_id,
+                "maturity": maturity,
             }
         )
     return labels
@@ -87,7 +122,7 @@ def _make_labels(dataset_id: str, all_complete: bool = False):
 
 async def seed_all(db):
     # Clear existing (idempotent reset)
-    for coll in ["users", "ecus", "software_releases", "datasets", "labels", "vehicle_sw_ids", "audit_log"]:
+    for coll in ["users", "ecus", "software_releases", "datasets", "labels", "vehicle_sw_ids", "audit_log", "work_packages"]:
         await db[coll].delete_many({})
 
     # Users
@@ -110,6 +145,19 @@ async def seed_all(db):
     await db.ecus.insert_one(
         {"id": ecm_id, "name": "ECM", "type": "Engine Control Module", "active": True}
     )
+
+    # WorkPackages
+    wp_id_map = {}
+    for code, name, responsible, sub_wp in DEMO_WORK_PACKAGES:
+        wp_id = _uuid()
+        wp_id_map[code] = wp_id
+        await db.work_packages.insert_one({
+            "id": wp_id, "code": code, "name": name,
+            "description": f"WorkPackage {code} — {name}",
+            "ecu_id": ecm_id, "sub_workpackage": sub_wp,
+            "responsible": responsible, "active": True,
+            "created_at": now,
+        })
 
     # Software Releases
     sr_ids = [_uuid(), _uuid(), _uuid()]
@@ -259,7 +307,7 @@ async def seed_all(db):
 
     for d in datasets:
         complete = d["lifecycle_state"] not in ("EDIT",)
-        all_labels.extend(_make_labels(d["id"], all_complete=complete))
+        all_labels.extend(_make_labels(d["id"], all_complete=complete, wp_id_map=wp_id_map))
     await db.labels.insert_many(all_labels)
 
     # Vehicle SW IDs for released datasets

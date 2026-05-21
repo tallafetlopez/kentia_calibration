@@ -4,6 +4,35 @@ from datetime import datetime, timezone
 import uuid
 from enum import Enum
 
+
+# ------- WorkPackage -------
+
+class WorkPackage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    code: str                         # AIR_ADM, TRQ_ADM, FUE_DFC, …
+    name: str
+    description: str = ""
+    ecu_id: str
+    sub_workpackage: Optional[str] = None
+    responsible: Literal["BeGas", "HERKO", "Shared"] = "BeGas"
+    active: bool = True
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class WorkPackageCreate(BaseModel):
+    code: str
+    name: str
+    description: str = ""
+    ecu_id: str
+    sub_workpackage: Optional[str] = None
+    responsible: Literal["BeGas", "HERKO", "Shared"] = "BeGas"
+
+class WorkPackageUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    sub_workpackage: Optional[str] = None
+    responsible: Optional[Literal["BeGas", "HERKO", "Shared"]] = None
+    active: Optional[bool] = None
+
 # ------- Calibration Files -------
 
 class CalibrationFileType(str, Enum):
@@ -58,6 +87,8 @@ ReviewStatus = Literal["PENDING", "ACCEPTED", "REWORK_REQUIRED"]
 LabelConfidence = Literal["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"]
 LabelLevel = Literal["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"]
 YesNo = Literal["YES", "NO"]
+LabelOwner = Literal["BeGas", "HERKO", "Shared"]
+LabelMaturity = Literal["0", "25", "75", "100", "Deprecated"]
 
 # ------- Users -------
 class UserPublic(BaseModel):
@@ -191,6 +222,13 @@ class Label(BaseModel):
     comments: str = ""
     imported_from_a2l: bool = True
     modified: bool = False
+    # --- BeGas req #3: responsibility ---
+    owner: LabelOwner = "BeGas"
+    deputy: str = ""
+    # --- BeGas req #4: WorkPackage ---
+    work_package_id: Optional[str] = None
+    # --- BeGas req #13: maturity ---
+    maturity: LabelMaturity = "0"
 
 class LabelUpdate(BaseModel):
     current_value: Optional[str] = None
@@ -202,6 +240,10 @@ class LabelUpdate(BaseModel):
     parametrizable_override_justification: Optional[str] = None
     change_justification: Optional[str] = None
     comments: Optional[str] = None
+    owner: Optional[LabelOwner] = None
+    deputy: Optional[str] = None
+    work_package_id: Optional[str] = None
+    maturity: Optional[LabelMaturity] = None
 
 # ------- Vehicle_SW_ID -------
 class VehicleSWID(BaseModel):

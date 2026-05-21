@@ -13,6 +13,7 @@ from seed import seed_all, _make_labels
 from routers import sw_releases, datasets, vehicle_sw_ids, a2l
 from routers import traceability as traceability_router
 from routers import dcm as dcm_router
+from routers import work_packages as work_packages_router
 
 load_dotenv(ROOT_DIR / ".env")
 
@@ -27,7 +28,8 @@ import logging
 from models import (
     CalibrationFile, CalibrationFileType, _uuid, _now, ROLES,
     RegisterBody, LoginBody, SwitchRoleBody, SoftwareReleaseCreate, DatasetCreate,
-    LabelUpdate, LabelMassUpdate, ReviewUpdate, ReleaseSelectBody, DeprecateBody, DeriveBody, VehicleSWIDCreate
+    LabelUpdate, LabelMassUpdate, ReviewUpdate, ReleaseSelectBody, DeprecateBody, DeriveBody, VehicleSWIDCreate,
+    WorkPackageCreate, WorkPackageUpdate,
 )
 # -------- Calibration Files API --------
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Query, UploadFile, File
@@ -97,6 +99,10 @@ async def on_startup():
     await db.users.create_index("email", unique=True)
     await db.datasets.create_index("software_release_id")
     await db.labels.create_index("dataset_id")
+    await db.labels.create_index("work_package_id")
+    await db.labels.create_index("owner")
+    await db.labels.create_index("maturity")
+    await db.work_packages.create_index([("code", 1), ("ecu_id", 1)], unique=True)
     await db.audit_log.create_index("date")
 
     existing = await db.users.count_documents({})
@@ -1162,6 +1168,7 @@ api_v1.include_router(vehicle_sw_ids.router)
 api_v1.include_router(traceability_router.router)
 api_v1.include_router(a2l.router)
 api_v1.include_router(dcm_router.router)
+api_v1.include_router(work_packages_router.router)
 app.include_router(api_v1)
 
 # ── Visualization module (non-destructive extension) ──────────────────────────

@@ -5,23 +5,21 @@ de la imagen de firmware usando las definiciones del A2L.
 Equivale a lo que hace ETAS INCA internamente al leer una ECU.
 
 Uso:
-    from calibrations.parsers.a2l_parser import A2lParser
-    from calibrations.parsers.s37_parser import S37Parser
-    from calibrations.parsers.ecu_reader import EcuReader
+    from parsers.a2l_parser import A2lParser
+    from parsers.s37_parser import S37Parser
+    from parsers.ecu_reader import EcuReader
 
     a2l = A2lParser().parse("HKSW_0A_03_102_00.a2l")
     s37 = S37Parser().parse("HKSW_0A_03_102_00.s37")
 
     reader = EcuReader(a2l, s37)
 
-    # Leer un escalar VALUE
     val = reader.read_scalar("ADMc_C_ComprNormRefTemp")
     print(f"Valor físico: {val} °C")
 
-    # Comparar con DCM
-    from calibrations.parsers.dcm_parser import DcmParser
-    dcm = DcmParser().parse("HKSW_0A_03_102_00_1D_120KMH_251120.DCM")
-    dcm_val = dcm.scalars["ADMc_C_ComprNormRefTemp"].value
+    from parsers.dcm_parser import DCMParser
+    dcm = DCMParser().parse("HKSW_0A_03_102_00_1D_120KMH_251120.DCM")
+    dcm_val = dcm["scalars"]["ADMc_C_ComprNormRefTemp"]["value"]
     print(f"DCM={dcm_val}  S37={val}  Match={abs(val - dcm_val) < 0.001}")
 
     # Leer todos los escalares VALUE disponibles en la imagen

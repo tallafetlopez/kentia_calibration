@@ -10,6 +10,19 @@ import { Label as UILabel } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { ShieldAlert, Search, X, Download, Copy, Filter } from "lucide-react";
 
+const OWNER_COLOR = {
+  BeGas:  "bg-blue-50 text-blue-700 border-blue-200",
+  HERKO:  "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Shared: "bg-amber-50 text-amber-700 border-amber-200",
+};
+const MATURITY_COLOR = {
+  "0":           "bg-slate-100 text-slate-500 border-slate-200",
+  "25":          "bg-amber-50 text-amber-700 border-amber-200",
+  "75":          "bg-sky-50 text-sky-700 border-sky-200",
+  "100":         "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Deprecated":  "bg-red-50 text-red-500 border-red-200",
+};
+
 /**
  * Excel-style labels grid.
  * - Click (or double-click) a cell to edit inline
@@ -26,6 +39,8 @@ const COLS = [
   { key: "data_type", label: "Type", width: 80, kind: "text", readonly: true },
   { key: "current_value", label: "Value", width: 130, kind: "text" },
   { key: "unit", label: "Unit", width: 70, kind: "text", readonly: true },
+  { key: "owner", label: "Owner", width: 80, kind: "enum", options: ["BeGas", "HERKO", "Shared"] },
+  { key: "maturity", label: "Maturity", width: 90, kind: "enum", options: ["0", "25", "75", "100", "Deprecated"] },
   { key: "level", label: "Level", width: 140, kind: "enum", options: ["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"] },
   { key: "confidence_status", label: "Confidence", width: 120, kind: "enum", options: ["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"] },
   { key: "regulatory_relevance", label: "Reg.", width: 70, kind: "enum", options: ["NO", "YES"] },
@@ -39,6 +54,7 @@ const EDITABLE_KEYS = [
   "current_value", "level", "confidence_status", "regulatory_relevance",
   "regulation_reference", "parametrizable_in_customer",
   "parametrizable_override_justification", "change_justification", "comments",
+  "owner", "maturity",
 ];
 
 function toneForConfidence(v) {
@@ -49,7 +65,10 @@ function toneForConfidence(v) {
 }
 
 export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
-  const [filter, setFilter] = useState({ q: "", modified: false, regulatory: false, incomplete: false, onlyCustomer: false });
+  const [filter, setFilter] = useState({
+    q: "", modified: false, regulatory: false, incomplete: false, onlyCustomer: false,
+    owner: "__all", maturity: "__all",
+  });
   const [selected, setSelected] = useState(new Set());
   const [editCell, setEditCell] = useState(null); // {rowId, key, value}
   const [massOpen, setMassOpen] = useState(false);
@@ -62,6 +81,8 @@ export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
       if (filter.regulatory && l.regulatory_relevance !== "YES") return false;
       if (filter.onlyCustomer && l.parametrizable_in_customer !== "YES") return false;
       if (filter.incomplete && !(l.confidence_status === "EMPTY" || (l.regulatory_relevance === "YES" && !l.change_justification))) return false;
+      if (filter.owner !== "__all" && l.owner !== filter.owner) return false;
+      if (filter.maturity !== "__all" && l.maturity !== filter.maturity) return false;
       return true;
     });
   }, [labels, filter]);
@@ -172,6 +193,28 @@ export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
         <FilterChip active={filter.regulatory} onClick={() => setFilter({ ...filter, regulatory: !filter.regulatory })} tone="red">Regulatory</FilterChip>
         <FilterChip active={filter.incomplete} onClick={() => setFilter({ ...filter, incomplete: !filter.incomplete })} tone="amber">Incomplete</FilterChip>
         <FilterChip active={filter.onlyCustomer} onClick={() => setFilter({ ...filter, onlyCustomer: !filter.onlyCustomer })} tone="blue">Customer param.</FilterChip>
+        <select
+          value={filter.owner}
+          onChange={(e) => setFilter({ ...filter, owner: e.target.value })}
+          className="h-8 text-[11px] border border-slate-200 rounded-md px-2 font-mono bg-white text-slate-700"
+        >
+          <option value="__all">All owners</option>
+          <option value="BeGas">BeGas</option>
+          <option value="HERKO">HERKO</option>
+          <option value="Shared">Shared</option>
+        </select>
+        <select
+          value={filter.maturity}
+          onChange={(e) => setFilter({ ...filter, maturity: e.target.value })}
+          className="h-8 text-[11px] border border-slate-200 rounded-md px-2 font-mono bg-white text-slate-700"
+        >
+          <option value="__all">All maturity</option>
+          <option value="0">0%</option>
+          <option value="25">25%</option>
+          <option value="75">75%</option>
+          <option value="100">100%</option>
+          <option value="Deprecated">Deprecated</option>
+        </select>
         <div className="flex-1" />
         <Button size="sm" variant="outline" className="h-8 text-xs" onClick={copySelected} disabled={selected.size === 0} data-testid="lbl-copy">
           <Copy className="w-3 h-3 mr-1.5" /> Copy ({selected.size})
@@ -346,6 +389,14 @@ function CellValue({ col, label }) {
   if (col.key === "confidence_status") {
     return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold border ${toneForConfidence(v)}`}>{v}</span>;
   }
+  if (col.key === "owner") {
+    const cls = OWNER_COLOR[v] || "bg-slate-100 text-slate-600 border-slate-200";
+    return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold border ${cls}`}>{v || "—"}</span>;
+  }
+  if (col.key === "maturity") {
+    const cls = MATURITY_COLOR[v] || "bg-slate-100 text-slate-500 border-slate-200";
+    return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold border ${cls}`}>{v !== undefined && v !== null ? `${v}%` : "—"}</span>;
+  }
   if (col.key === "level") {
     return <span className="text-[10px] text-slate-600">{v}</span>;
   }
@@ -421,6 +472,26 @@ function MassEditDialog({ open, onOpenChange, count, onApply }) {
                 <SelectItem value="__keep">— keep —</SelectItem>
                 <SelectItem value="NO">NO</SelectItem>
                 <SelectItem value="YES">YES</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <UILabel className="tiny-label">Owner</UILabel>
+            <Select value={patch.owner || "__keep"} onValueChange={(v) => set("owner", v === "__keep" ? "" : v)}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__keep">— keep —</SelectItem>
+                {["BeGas", "HERKO", "Shared"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <UILabel className="tiny-label">Maturity</UILabel>
+            <Select value={patch.maturity || "__keep"} onValueChange={(v) => set("maturity", v === "__keep" ? "" : v)}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__keep">— keep —</SelectItem>
+                {["0", "25", "75", "100", "Deprecated"].map((x) => <SelectItem key={x} value={x}>{x}%</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
