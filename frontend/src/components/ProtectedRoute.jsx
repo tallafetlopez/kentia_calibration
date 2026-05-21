@@ -4,12 +4,12 @@ import { useAuth } from "../lib/auth";
 import AppLayout from "./AppLayout";
 import AuthErrorFallback from "./AuthErrorFallback";
 
-export default function ProtectedRoute({ children }) {
+export default function ProtectedRoute({ children, noLayout = false }) {
   const { user, loading, devBypass, authError, refresh } = useAuth();
 
   // Dev bypass active - skip all auth checks
   if (devBypass) {
-    return <AppLayout>{children}</AppLayout>;
+    return noLayout ? children : <AppLayout>{children}</AppLayout>;
   }
 
   // Auth error occurred (timeout or network issue)
@@ -29,5 +29,5 @@ export default function ProtectedRoute({ children }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
-  return <AppLayout>{children}</AppLayout>;
+  return noLayout ? children : <AppLayout>{children}</AppLayout>;
 }

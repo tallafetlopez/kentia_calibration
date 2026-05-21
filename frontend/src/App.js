@@ -72,19 +72,16 @@ function AppContent() {
           <Route
             path="/datasets"
             element={
-              <ProtectedRoute>
-                <DatasetsPage />
+              <ProtectedRoute noLayout>
+                <HerkoLayout />
               </ProtectedRoute>
             }
-          />
-          <Route
-            path="/datasets/:id"
-            element={
-              <ProtectedRoute>
-                <DatasetDetailPage />
-              </ProtectedRoute>
-            }
-          />
+          >
+            <Route index element={<HerkoDatasetsPage />} />
+            <Route path="create" element={<HerkoCreateDatasetPage />} />
+            <Route path=":id" element={<HerkoDatasetDetailPage />} />
+            <Route path=":id/review" element={<HerkoReviewPage />} />
+          </Route>
           <Route
             path="/review-center"
             element={
@@ -133,20 +130,15 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          {/* HERKO Design System routes */}
           <Route
-            path="/herko"
+            path="/labels"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute noLayout>
                 <HerkoLayout />
               </ProtectedRoute>
             }
           >
-            <Route path="datasets" element={<HerkoDatasetsPage />} />
-            <Route path="datasets/create" element={<HerkoCreateDatasetPage />} />
-            <Route path="datasets/:id" element={<HerkoDatasetDetailPage />} />
-            <Route path="datasets/:id/review" element={<HerkoReviewPage />} />
-            <Route path="labels" element={<HerkoLabelsPage />} />
+            <Route index element={<HerkoLabelsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
