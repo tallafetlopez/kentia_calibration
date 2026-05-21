@@ -1,7 +1,7 @@
 """Datasets router for HERKO Calibration Manager."""
 
 from fastapi import APIRouter, HTTPException, Query, Depends, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List, Literal
 from datetime import datetime
 from bson import ObjectId
@@ -49,6 +49,39 @@ class DatasetRenameRequest(BaseModel):
     name: str
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class LabelUpdateRequest(BaseModel):
+    current_value: Optional[str] = None
+    level: Optional[str] = None
+    confidence_status: Optional[str] = None
+    regulatory_relevance: Optional[str] = None
+    parametrizable_in_customer: Optional[str] = None
+    change_justification: Optional[str] = None
+    comments: Optional[str] = None
+
+    @field_validator("level")
+    @classmethod
+    def validate_level(cls, v):
+        allowed = {"CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"}
+        if v is not None and v not in allowed:
+            raise ValueError(f"level must be one of {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("confidence_status")
+    @classmethod
+    def validate_confidence_status(cls, v):
+        allowed = {"EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"}
+        if v is not None and v not in allowed:
+            raise ValueError(f"confidence_status must be one of {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("regulatory_relevance", "parametrizable_in_customer")
+    @classmethod
+    def validate_yes_no(cls, v):
+        if v is not None and v not in {"YES", "NO"}:
+            raise ValueError("Value must be YES or NO")
+        return v
 
 
 class DatasetResponse(DatasetBase):
@@ -350,16 +383,75 @@ async def get_dataset_labels(
     db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_user),
 ):
-    """Return all labels for a dataset (for heatmap / evolution charts)."""
+    """Return all labels for a dataset."""
     cursor = db.labels.find({"dataset_id": dataset_id})
     labels = []
     async for doc in cursor:
         doc["id"] = str(doc.pop("_id"))
         labels.append(doc)
-    if not labels:
-        # Return mock data so charts render even without real labels
-        labels = _mock_labels(dataset_id)
     return labels
+
+
+@router.patch("/{dataset_id}/labels/{label_id}")
+async def update_label(
+    dataset_id: str,
+    label_id: str,
+    body: LabelUpdateRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Update a single label. Dataset must be in EDIT state."""
+    try:
+        ds_oid = ObjectId(dataset_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid dataset ID format")
+
+    dataset = await db.datasets.find_one({"_id": ds_oid})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.get("state") != "EDIT":
+        raise HTTPException(status_code=400, detail="Dataset is not in EDIT state")
+
+    try:
+        lbl_oid = ObjectId(label_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid label ID format")
+
+    label = await db.labels.find_one({"_id": lbl_oid, "dataset_id": dataset_id})
+    if not label:
+        raise HTTPException(status_code=404, detail="Label not found")
+
+    old_value = label.get("current_value")
+    value_changed = body.current_value is not None and body.current_value != old_value
+    if value_changed and not (body.change_justification or "").strip():
+        raise HTTPException(status_code=422, detail="change_justification is required when modifying current_value")
+
+    now = datetime.utcnow()
+    author = user.get("username") or user.get("email")
+
+    update_fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    if value_changed:
+        update_fields["modified"] = True
+    update_fields["last_modified_by"] = author
+    update_fields["last_modification_date"] = now.isoformat()
+
+    await db.labels.update_one({"_id": lbl_oid}, {"$set": update_fields})
+
+    await db.audit_log.insert_one({
+        "entity_type": "label",
+        "entity_id": label_id,
+        "dataset_id": dataset_id,
+        "action": "LABEL_UPDATED",
+        "author": author,
+        "date": now.isoformat(),
+        "previous_value": old_value,
+        "new_value": body.current_value if body.current_value is not None else old_value,
+        "justification": body.change_justification,
+    })
+
+    updated = await db.labels.find_one({"_id": lbl_oid})
+    updated["id"] = str(updated.pop("_id"))
+    return updated
 
 
 @router.get("/{dataset_id}/maps")
