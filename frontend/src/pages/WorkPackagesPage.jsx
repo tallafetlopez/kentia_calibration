@@ -1,8 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
-import AppLayout from "../components/AppLayout";
 import { api } from "../lib/api";
 import { toast } from "sonner";
-import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
@@ -13,10 +11,10 @@ import { Plus, Pencil, Trash2, Layers, Users } from "lucide-react";
 
 const OWNER_OPTIONS = ["BeGas", "HERKO", "Shared"];
 
-const ownerColor = {
-  BeGas: "bg-blue-50 text-blue-700 border-blue-200",
-  HERKO: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  Shared: "bg-amber-50 text-amber-700 border-amber-200",
+const ownerBadge = {
+  BeGas: { background: "#DDEEFF", color: "#004578", border: "1px solid #7EB3E0" },
+  HERKO: { background: "#DFF6DD", color: "#1E6B1E", border: "1px solid #82C882" },
+  Shared: { background: "#FFF4CE", color: "#7A5C00", border: "1px solid #F0D060" },
 };
 
 function WpForm({ initial, ecus, onSubmit, onCancel, loading }) {
@@ -27,12 +25,13 @@ function WpForm({ initial, ecus, onSubmit, onCancel, loading }) {
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
-          <Label className="tiny-label">Code *</Label>
-          <Input
-            className="mt-1 font-mono text-sm"
+          <Label className="tiny-label" style={{ display: "block", marginBottom: 3 }}>Code *</Label>
+          <input
+            className="ms-input"
+            style={{ fontFamily: "monospace" }}
             placeholder="AIR_ADM"
             value={form.code}
             onChange={(e) => set("code", e.target.value.toUpperCase())}
@@ -40,9 +39,9 @@ function WpForm({ initial, ecus, onSubmit, onCancel, loading }) {
           />
         </div>
         <div>
-          <Label className="tiny-label">ECU *</Label>
+          <Label className="tiny-label" style={{ display: "block", marginBottom: 3 }}>ECU *</Label>
           <Select value={form.ecu_id} onValueChange={(v) => set("ecu_id", v)}>
-            <SelectTrigger className="mt-1"><SelectValue placeholder="Select ECU…" /></SelectTrigger>
+            <SelectTrigger style={{ height: 24, fontSize: 12 }}><SelectValue placeholder="Select ECU…" /></SelectTrigger>
             <SelectContent>
               {ecus.map((e) => (
                 <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
@@ -50,37 +49,37 @@ function WpForm({ initial, ecus, onSubmit, onCancel, loading }) {
             </SelectContent>
           </Select>
         </div>
-        <div className="col-span-2">
-          <Label className="tiny-label">Name *</Label>
-          <Input className="mt-1" placeholder="Air management admission" value={form.name} onChange={(e) => set("name", e.target.value)} />
+        <div style={{ gridColumn: "span 2" }}>
+          <Label className="tiny-label" style={{ display: "block", marginBottom: 3 }}>Name *</Label>
+          <input className="ms-input" placeholder="Air management admission" value={form.name} onChange={(e) => set("name", e.target.value)} />
         </div>
         <div>
-          <Label className="tiny-label">Sub-workpackage</Label>
-          <Input className="mt-1 font-mono text-sm" placeholder="optional" value={form.sub_workpackage} onChange={(e) => set("sub_workpackage", e.target.value)} />
+          <Label className="tiny-label" style={{ display: "block", marginBottom: 3 }}>Sub-workpackage</Label>
+          <input className="ms-input" style={{ fontFamily: "monospace" }} placeholder="optional" value={form.sub_workpackage} onChange={(e) => set("sub_workpackage", e.target.value)} />
         </div>
         <div>
-          <Label className="tiny-label">Responsible</Label>
+          <Label className="tiny-label" style={{ display: "block", marginBottom: 3 }}>Responsible</Label>
           <Select value={form.responsible} onValueChange={(v) => set("responsible", v)}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectTrigger style={{ height: 24, fontSize: 12 }}><SelectValue /></SelectTrigger>
             <SelectContent>
               {OWNER_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
-        <div className="col-span-2">
-          <Label className="tiny-label">Description</Label>
-          <Textarea rows={2} className="mt-1 text-sm" value={form.description} onChange={(e) => set("description", e.target.value)} />
+        <div style={{ gridColumn: "span 2" }}>
+          <Label className="tiny-label" style={{ display: "block", marginBottom: 3 }}>Description</Label>
+          <textarea rows={2} className="ms-input" style={{ height: 52, resize: "vertical" }} value={form.description} onChange={(e) => set("description", e.target.value)} />
         </div>
       </div>
       <DialogFooter>
-        <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button
-          className="bg-slate-900 hover:bg-slate-800"
+        <button className="ms-btn" onClick={onCancel}>Cancel</button>
+        <button
+          className="ms-btn primary"
           disabled={loading || !form.code || !form.name || !form.ecu_id}
           onClick={() => onSubmit(form)}
         >
           {initial ? "Save changes" : "Create WorkPackage"}
-        </Button>
+        </button>
       </DialogFooter>
     </div>
   );
@@ -169,98 +168,101 @@ export default function WorkPackagesPage() {
   const ecuName = (id) => ecus.find((e) => e.id === id)?.name || id;
 
   return (
-    <AppLayout>
-      <div className="max-w-5xl mx-auto p-6 space-y-5">
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Layers className="w-5 h-5 text-brand" />
-              WorkPackages
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Functional groupings of labels (BeGas req #4). Each label belongs to exactly one WP.
-            </p>
+            <div className="tiny-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Layers size={12} style={{ color: "#646E5A" }} /> WorkPackages
+            </div>
+            <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>WorkPackages</h1>
+            <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Functional groupings of labels. Each label belongs to exactly one WP.</p>
           </div>
-          <Button className="bg-slate-900 hover:bg-slate-800 h-8 text-xs" onClick={() => setCreateOpen(true)}>
-            <Plus className="w-3.5 h-3.5 mr-1.5" /> New WorkPackage
-          </Button>
+          <button className="ms-btn primary" onClick={() => setCreateOpen(true)}>
+            <Plus size={12} /> New WorkPackage
+          </button>
         </div>
 
         {/* Filters */}
-        <div className="panel p-3 flex flex-wrap gap-2 items-center">
-          <Input
-            className="h-8 text-xs w-48"
-            placeholder="Search code or name…"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-          />
-          <Select value={filterEcu} onValueChange={setFilterEcu}>
-            <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All ECUs</SelectItem>
-              {ecus.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-slate-500 ml-auto">{filtered.length} workpackages</span>
+        <div className="panel" style={{ padding: "10px 12px", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+          <div>
+            <div className="tiny-label" style={{ marginBottom: 3 }}>Search</div>
+            <input
+              className="ms-input"
+              style={{ width: 200 }}
+              placeholder="Search code or name…"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+          </div>
+          <div>
+            <div className="tiny-label" style={{ marginBottom: 3 }}>ECU</div>
+            <Select value={filterEcu} onValueChange={setFilterEcu}>
+              <SelectTrigger style={{ height: 24, fontSize: 12, width: 150 }}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">All ECUs</SelectItem>
+                {ecus.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <span style={{ fontSize: 11, color: "#8A8886", marginLeft: "auto" }}>{filtered.length} workpackages</span>
         </div>
 
         {/* Table */}
-        <div className="panel p-0 overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="panel" style={{ overflow: "hidden" }}>
+          <table className="xl-table">
             <thead>
-              <tr className="bg-slate-100 border-b border-slate-200">
-                <th className="text-left px-4 py-2.5 font-semibold text-slate-600 w-28">Code</th>
-                <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Name</th>
-                <th className="text-left px-4 py-2.5 font-semibold text-slate-600 w-24">ECU</th>
-                <th className="text-left px-4 py-2.5 font-semibold text-slate-600 w-24">Responsible</th>
-                <th className="text-left px-4 py-2.5 font-semibold text-slate-600 w-20">Sub-WP</th>
-                <th className="text-right px-4 py-2.5 font-semibold text-slate-600 w-20">Labels</th>
-                <th className="w-20"></th>
+              <tr>
+                <th style={{ width: 110 }}>Code</th>
+                <th>Name</th>
+                <th style={{ width: 100 }}>ECU</th>
+                <th style={{ width: 100 }}>Responsible</th>
+                <th style={{ width: 90 }}>Sub-WP</th>
+                <th style={{ width: 70, textAlign: "right" }}>Labels</th>
+                <th style={{ width: 70 }}></th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="py-10 text-center text-slate-400">Loading…</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: "center", color: "#8A8886", padding: "20px 0" }}>Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="py-10 text-center text-slate-400">
+                <tr><td colSpan={7} style={{ textAlign: "center", color: "#8A8886", padding: "20px 0" }}>
                   {wps.length === 0 ? "No WorkPackages yet. Create one to start assigning labels." : "No results for current filters."}
                 </td></tr>
-              ) : filtered.map((wp, i) => (
-                <tr key={wp.id} className={`border-b border-slate-100 hover:bg-slate-50 ${i % 2 === 0 ? "" : "bg-slate-50/40"}`}>
-                  <td className="px-4 py-2.5 font-mono font-semibold text-slate-900">{wp.code}</td>
-                  <td className="px-4 py-2.5 text-slate-700">
-                    {wp.name}
-                    {wp.description && <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-xs">{wp.description}</p>}
+              ) : filtered.map((wp) => (
+                <tr key={wp.id}>
+                  <td style={{ fontFamily: "monospace", fontWeight: 600, color: "#212121" }}>{wp.code}</td>
+                  <td>
+                    <span style={{ fontWeight: 600 }}>{wp.name}</span>
+                    {wp.description && <div style={{ fontSize: 10, color: "#8A8886", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>{wp.description}</div>}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-500 font-mono text-[10px]">{ecuName(wp.ecu_id)}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${ownerColor[wp.responsible]}`}>
+                  <td style={{ fontFamily: "monospace", fontSize: 10, color: "#605E5C" }}>{ecuName(wp.ecu_id)}</td>
+                  <td>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", ...ownerBadge[wp.responsible] }}>
                       {wp.responsible}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-slate-500 text-[10px]">{wp.sub_workpackage || "—"}</td>
-                  <td className="px-4 py-2.5 text-right font-mono">
-                    <span className="inline-flex items-center gap-1 text-slate-700">
-                      <Users className="w-3 h-3 text-slate-400" />
+                  <td style={{ fontFamily: "monospace", fontSize: 10, color: "#605E5C" }}>{wp.sub_workpackage || "—"}</td>
+                  <td style={{ textAlign: "right", fontFamily: "monospace" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Users size={11} style={{ color: "#8A8886" }} />
                       {wp.label_count ?? "—"}
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditTarget(wp)}>
-                        <Pencil className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                  <td style={{ textAlign: "right" }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                      <button className="ms-btn" style={{ height: 22, width: 22, padding: 0 }} onClick={() => setEditTarget(wp)}>
+                        <Pencil size={11} />
+                      </button>
+                      <button
+                        className="ms-btn"
+                        style={{ height: 22, width: 22, padding: 0, color: (wp.label_count ?? 0) > 0 ? "#C8C8C8" : "#B42318", borderColor: (wp.label_count ?? 0) > 0 ? "#E0E0E0" : "#F4ACAC" }}
                         onClick={() => setDeleteTarget(wp)}
                         disabled={(wp.label_count ?? 0) > 0}
                         title={(wp.label_count ?? 0) > 0 ? "Has labels — cannot delete" : "Delete"}
                       >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+                        <Trash2 size={11} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -303,6 +305,6 @@ export default function WorkPackagesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppLayout>
+    </div>
   );
 }

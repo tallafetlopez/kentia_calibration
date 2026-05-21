@@ -20,11 +20,6 @@ import AdminPage from "./pages/AdminPage";
 import SwReleaseDCMViewer from "./pages/SwReleaseDCMViewer";
 import WorkPackagesPage from "./pages/WorkPackagesPage";
 import { Toaster } from "./components/ui/sonner";
-import HerkoLayout from "./pages/herko/HerkoLayout";
-import HerkoDatasetsPage from "./pages/herko/HerkoDatasetsPage";
-import HerkoCreateDatasetPage from "./pages/herko/HerkoCreateDatasetPage";
-import HerkoDatasetDetailPage from "./pages/herko/HerkoDatasetDetailPage";
-import HerkoReviewPage from "./pages/herko/HerkoReviewPage";
 import HerkoLabelsPage from "./pages/herko/HerkoLabelsPage";
 
 // Initialize dev bypass interceptors if needed
@@ -72,16 +67,19 @@ function AppContent() {
           <Route
             path="/datasets"
             element={
-              <ProtectedRoute noLayout>
-                <HerkoLayout />
+              <ProtectedRoute>
+                <DatasetsPage />
               </ProtectedRoute>
             }
-          >
-            <Route index element={<HerkoDatasetsPage />} />
-            <Route path="create" element={<HerkoCreateDatasetPage />} />
-            <Route path=":id" element={<HerkoDatasetDetailPage />} />
-            <Route path=":id/review" element={<HerkoReviewPage />} />
-          </Route>
+          />
+          <Route
+            path="/datasets/:id"
+            element={
+              <ProtectedRoute>
+                <DatasetDetailPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/review-center"
             element={
@@ -133,13 +131,11 @@ function AppContent() {
           <Route
             path="/labels"
             element={
-              <ProtectedRoute noLayout>
-                <HerkoLayout />
+              <ProtectedRoute>
+                <HerkoLabelsPage />
               </ProtectedRoute>
             }
-          >
-            <Route index element={<HerkoLabelsPage />} />
-          </Route>
+          />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" richColors />

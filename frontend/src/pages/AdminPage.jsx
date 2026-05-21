@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
-import { Button } from "../components/ui/button";
-import { Database, RefreshCw, Users } from "lucide-react";
+import { RefreshCw, Users } from "lucide-react";
 import { ROLES_LIST, fmtDate } from "../lib/constants";
 import { useAuth } from "../lib/auth";
 
@@ -32,62 +31,63 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="space-y-6" data-testid="page-admin">
-      <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="page-admin">
+      <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10 }}>
         <div className="tiny-label">Workflow 9</div>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>Admin · Role simulation & seed</h1>
-        <p className="mt-1 text-sm text-slate-600">Inspect users, switch role, reseed the demo dataset.</p>
+        <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>Admin · Role simulation & seed</h1>
+        <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Inspect users, switch role, reseed the demo dataset.</p>
       </div>
 
-      <div className="panel p-5">
-        <div className="tiny-label mb-3">Demo seed</div>
-        <p className="text-sm text-slate-600">Reset the database to seeded demo state with 9 users, 3 software releases, 10 datasets and 200 labels.</p>
-        <Button onClick={reseed} disabled={busy} className="mt-3 bg-slate-900 hover:bg-slate-800" data-testid="admin-reseed">
-          <RefreshCw className={`w-4 h-4 mr-1.5 ${busy ? "animate-spin" : ""}`} /> Reseed demo data
-        </Button>
+      <div className="panel" style={{ padding: "12px 14px" }}>
+        <div className="tiny-label" style={{ marginBottom: 8 }}>Demo seed</div>
+        <p style={{ fontSize: 12, color: "#605E5C", margin: "0 0 10px" }}>Reset the database to seeded demo state with 9 users, 3 software releases, 10 datasets and 200 labels.</p>
+        <button onClick={reseed} disabled={busy} className="ms-btn primary" data-testid="admin-reseed">
+          <RefreshCw size={12} style={{ animation: busy ? "spin 1s linear infinite" : "none" }} /> Reseed demo data
+        </button>
       </div>
 
-      <div className="panel overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
-          <Users className="w-4 h-4 text-slate-700" />
-          <div className="tiny-label">Users & roles</div>
+      <div className="panel" style={{ overflow: "hidden" }}>
+        <div style={{ padding: "8px 14px", borderBottom: "1px solid #C8C8C8", background: "#F0F0F0", display: "flex", alignItems: "center", gap: 8 }}>
+          <Users style={{ width: 13, height: 13, color: "#212121" }} />
+          <span className="tiny-label">Users & roles</span>
         </div>
-        <table className="w-full text-sm">
+        <table className="xl-table">
           <thead>
-            <tr className="border-b border-slate-200 text-left">
-              <th className="tiny-label py-3 px-4">Name</th>
-              <th className="tiny-label py-3 px-4">Email</th>
-              <th className="tiny-label py-3 px-4">Roles</th>
-              <th className="tiny-label py-3 px-4">Active role</th>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Roles</th>
+              <th>Active role</th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-b border-slate-100" data-testid={`user-row-${u.email}`}>
-                <td className="py-3 px-4 text-slate-900 font-medium">{u.name}</td>
-                <td className="py-3 px-4 text-xs font-mono text-slate-600">{u.email}</td>
-                <td className="py-3 px-4">
-                  <div className="flex gap-1 flex-wrap">
+              <tr key={u.id} data-testid={`user-row-${u.email}`}>
+                <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td style={{ fontFamily: "monospace", fontSize: 11 }}>{u.email}</td>
+                <td>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                     {u.roles.map((r) => (
-                      <span key={r} className="text-[10px] font-mono bg-slate-100 text-slate-700 border border-slate-200 rounded-sm px-1.5 py-0.5">{r}</span>
+                      <span key={r} style={{ fontSize: 9, fontFamily: "monospace", background: "#F3F3F3", color: "#605E5C", border: "1px solid #C8C8C8", padding: "1px 5px" }}>{r}</span>
                     ))}
                   </div>
                 </td>
-                <td className="py-3 px-4 text-[11px] font-mono text-slate-700">{u.active_role}</td>
+                <td style={{ fontFamily: "monospace", fontSize: 11 }}>{u.active_role}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="panel p-5">
-        <div className="tiny-label mb-3">Your roles — switch active</div>
-        <div className="flex flex-wrap gap-2">
+      <div className="panel" style={{ padding: "12px 14px" }}>
+        <div className="tiny-label" style={{ marginBottom: 8 }}>Your roles — switch active</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {user?.roles?.map((r) => (
             <button
               key={r}
               onClick={() => switchRole(r)}
-              className={`text-[11px] font-mono px-3 py-1.5 rounded-md border transition ${user?.active_role === r ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`}
+              className={user?.active_role === r ? "ms-btn primary" : "ms-btn"}
+              style={{ fontSize: 11, fontFamily: "monospace" }}
               data-testid={`admin-switch-${r}`}
             >
               {r}
@@ -96,14 +96,16 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="panel overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 tiny-label">Recent audit</div>
-        <ul>
+      <div className="panel" style={{ overflow: "hidden" }}>
+        <div style={{ padding: "8px 14px", borderBottom: "1px solid #C8C8C8", background: "#F0F0F0" }}>
+          <span className="tiny-label">Recent audit</span>
+        </div>
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {audit.map((a) => (
-            <li key={a.id} className="px-5 py-2 border-b border-slate-100 text-xs">
-              <span className="font-mono text-slate-900">{a.action}</span>
-              <span className="text-slate-500"> · {a.entity_type} · {a.author} · {fmtDate(a.date)}</span>
-              {a.justification && <div className="text-slate-600">{a.justification}</div>}
+            <li key={a.id} style={{ padding: "6px 14px", borderBottom: "1px solid #E8E8E8", fontSize: 11 }}>
+              <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#212121" }}>{a.action}</span>
+              <span style={{ color: "#605E5C" }}> · {a.entity_type} · {a.author} · {fmtDate(a.date)}</span>
+              {a.justification && <div style={{ color: "#605E5C", fontSize: 10, marginTop: 2 }}>{a.justification}</div>}
             </li>
           ))}
         </ul>

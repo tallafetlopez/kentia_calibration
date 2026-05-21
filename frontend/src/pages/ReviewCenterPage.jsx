@@ -8,11 +8,12 @@ const DOMAINS = ["technical", "project_configuration", "regulatory", "vnv"];
 
 function DomStatus({ status }) {
   const map = {
-    PENDING: "bg-amber-50 text-amber-700 border-amber-200",
-    ACCEPTED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    REWORK_REQUIRED: "bg-red-50 text-red-700 border-red-200",
+    PENDING: { background: "#FFF4CE", color: "#7A5C00", border: "1px solid #F0D060" },
+    ACCEPTED: { background: "#DFF6DD", color: "#1E6B1E", border: "1px solid #82C882" },
+    REWORK_REQUIRED: { background: "#FDE7E9", color: "#8B0000", border: "1px solid #F4ACAC" },
   };
-  return <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${map[status]}`}>{status}</span>;
+  const st = map[status] || map.PENDING;
+  return <span style={{ ...st, fontSize: 9, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", padding: "1px 5px", display: "inline-block" }}>{status}</span>;
 }
 
 export default function ReviewCenterPage() {
@@ -20,34 +21,34 @@ export default function ReviewCenterPage() {
   useEffect(() => { api.get("/datasets", { params: { lifecycle_state: "UNDER_APPROVAL" } }).then((r) => setItems(r.data)); }, []);
 
   return (
-    <div className="space-y-6" data-testid="page-review-center">
-      <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="page-review-center">
+      <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10 }}>
         <div className="tiny-label">Workflow 5</div>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>Review Center</h1>
-        <p className="mt-1 text-sm text-slate-600">Datasets awaiting cross-functional review and final approval.</p>
+        <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>Review Center</h1>
+        <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Datasets awaiting cross-functional review and final approval.</p>
       </div>
 
       {items.length === 0 ? (
-        <div className="panel p-10 text-center">
-          <ClipboardCheck className="w-10 h-10 text-slate-300 mx-auto" />
-          <div className="mt-3 text-sm text-slate-600">No datasets are currently under approval.</div>
+        <div className="panel" style={{ padding: "40px", textAlign: "center" }}>
+          <ClipboardCheck style={{ width: 36, height: 36, color: "#C8C8C8", margin: "0 auto 10px" }} />
+          <div style={{ fontSize: 12, color: "#605E5C" }}>No datasets are currently under approval.</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
           {items.map((d) => (
-            <div key={d.id} className="panel p-5" data-testid={`review-card-${d.dataset_name}`}>
-              <div className="flex items-center justify-between">
+            <div key={d.id} className="panel" style={{ padding: "12px 14px" }} data-testid={`review-card-${d.dataset_name}`}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <LifecycleBadge state={d.lifecycle_state} />
-                <Link to={`/datasets/${d.id}`} className="text-xs text-slate-900 font-medium hover:underline">
-                  Open <ArrowUpRight className="w-3 h-3 inline" />
+                <Link to={`/datasets/${d.id}`} style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }}>
+                  Open <ArrowUpRight style={{ width: 11, height: 11, display: "inline" }} />
                 </Link>
               </div>
-              <div className="mt-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Chivo" }}>{d.dataset_name}</div>
-              <div className="text-xs font-mono text-slate-500 mt-0.5">{d.deployment_context} · updated {fmtDate(d.last_modified_date)}</div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#212121", marginTop: 8 }}>{d.dataset_name}</div>
+              <div style={{ fontSize: 10, fontFamily: "monospace", color: "#605E5C", marginTop: 2 }}>{d.deployment_context} · updated {fmtDate(d.last_modified_date)}</div>
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                 {DOMAINS.map((dom) => (
-                  <div key={dom} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-mono">{dom}</span>
+                  <div key={dom} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, fontFamily: "monospace", color: "#605E5C" }}>{dom}</span>
                     <DomStatus status={d.review?.[dom] || "PENDING"} />
                   </div>
                 ))}

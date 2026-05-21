@@ -10,57 +10,64 @@ export default function TraceabilityPage() {
   if (!data) return <div className="tiny-label pulse-slow">Loading traceability…</div>;
 
   return (
-    <div className="space-y-6" data-testid="page-traceability">
-      <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="page-traceability">
+      <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10 }}>
         <div className="tiny-label">Workflow 8</div>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900" style={{ fontFamily: "Chivo" }}>Traceability Explorer</h1>
-        <p className="mt-1 text-sm text-slate-600">Software Release → Dataset → Vehicle_SW_ID → VIN / Variant / Manufacturing Order.</p>
+        <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>Traceability Explorer</h1>
+        <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Software Release → Dataset → Vehicle_SW_ID → VIN / Variant / Manufacturing Order.</p>
       </div>
 
-      <div className="space-y-5">
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {data.software_releases.map((sr) => {
           const dsList = data.datasets.filter((d) => d.software_release_id === sr.id);
           return (
-            <div key={sr.id} className="panel p-0 overflow-hidden">
-              <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CircuitBoard className="w-4 h-4 text-slate-700" />
-                  <Link to={`/software-releases/${sr.id}`} className="font-semibold text-slate-900 hover:underline" style={{ fontFamily: "Chivo" }}>
+            <div key={sr.id} className="panel" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ background: "#F0F0F0", borderBottom: "1px solid #C8C8C8", padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <CircuitBoard style={{ width: 14, height: 14, color: "#212121" }} />
+                  <Link to={`/software-releases/${sr.id}`} style={{ fontWeight: 600, color: "#212121", fontSize: 13 }}>
                     {sr.software_release_identifier}
                   </Link>
-                  <span className="text-xs font-mono text-slate-500">v{sr.version}</span>
+                  <span style={{ fontSize: 11, fontFamily: "monospace", color: "#605E5C" }}>v{sr.version}</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${sr.status === "VALID_FOR_CALIBRATION" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-700 border-slate-200"}`}>{sr.status}</span>
+                <span style={{
+                  fontSize: 9, fontFamily: "monospace", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", padding: "1px 6px",
+                  ...(sr.status === "VALID_FOR_CALIBRATION"
+                    ? { background: "#DFF6DD", color: "#1E6B1E", border: "1px solid #82C882" }
+                    : { background: "#F3F3F3", color: "#444", border: "1px solid #C8C8C8" })
+                }}>{sr.status}</span>
               </div>
-              <div className="p-5 space-y-3">
-                {dsList.length === 0 && <div className="text-xs text-slate-500">No datasets under this release.</div>}
+              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {dsList.length === 0 && <div style={{ fontSize: 11, color: "#8A8886" }}>No datasets under this release.</div>}
                 {dsList.map((d) => {
                   const vsids = data.vehicle_sw_ids.filter((v) => v.dataset_id === d.id);
                   return (
-                    <div key={d.id} className="border-l-2 border-slate-200 pl-4 ml-1 relative" data-testid={`trace-ds-${d.dataset_name}`}>
-                      <div className="absolute -left-[5px] top-2 w-2 h-2 rounded-full bg-slate-300" />
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Database className="w-3.5 h-3.5 text-slate-500" />
-                        <Link to={`/datasets/${d.id}`} className="font-medium text-slate-900 hover:underline">{d.dataset_name}</Link>
+                    <div key={d.id} style={{ borderLeft: "2px solid #C8C8C8", paddingLeft: 12, marginLeft: 4, position: "relative" }} data-testid={`trace-ds-${d.dataset_name}`}>
+                      <div style={{ position: "absolute", left: -5, top: 6, width: 8, height: 8, borderRadius: "50%", background: "#C8C8C8" }} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <Database style={{ width: 13, height: 13, color: "#605E5C" }} />
+                        <Link to={`/datasets/${d.id}`} style={{ fontWeight: 600, color: "#212121", fontSize: 12 }}>{d.dataset_name}</Link>
                         <LifecycleBadge state={d.lifecycle_state} />
-                        <span className="text-[10px] font-mono text-slate-500">{d.deployment_context}</span>
+                        <span style={{ fontSize: 10, fontFamily: "monospace", color: "#605E5C" }}>{d.deployment_context}</span>
                       </div>
                       {vsids.length > 0 && (
-                        <div className="mt-2 space-y-1.5">
+                        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
                           {vsids.map((v) => (
-                            <div key={v.id} className="flex items-center gap-2 text-xs text-slate-700 pl-4 border-l-2 border-slate-100">
-                              <Car className="w-3 h-3 text-slate-400" />
-                              <span className="font-mono text-slate-900">{v.id.slice(0, 8)}…</span>
-                              <span className="text-slate-500">→</span>
-                              <span className="font-mono text-slate-700">{v.vin || v.variant_id || v.manufacturing_order_reference || v.service_case_reference}</span>
-                              <span className="text-slate-400">·</span>
-                              <span className="text-[10px] font-mono text-slate-500">{fmtDateShort(v.creation_date)}</span>
+                            <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 14, borderLeft: "2px solid #E8E8E8", fontSize: 11 }}>
+                              <Car style={{ width: 11, height: 11, color: "#8A8886" }} />
+                              <span style={{ fontFamily: "monospace", color: "#212121" }}>{v.id.slice(0, 8)}…</span>
+                              <span style={{ color: "#605E5C" }}>→</span>
+                              <span style={{ fontFamily: "monospace", color: "#212121" }}>{v.vin || v.variant_id || v.manufacturing_order_reference || v.service_case_reference}</span>
+                              <span style={{ color: "#C8C8C8" }}>·</span>
+                              <span style={{ fontSize: 10, fontFamily: "monospace", color: "#8A8886" }}>{fmtDateShort(v.creation_date)}</span>
                             </div>
                           ))}
                         </div>
                       )}
                       {d.baseline_dataset_id && (
-                        <div className="mt-1 text-[10px] font-mono text-slate-500 flex items-center gap-1"><GitBranch className="w-3 h-3" /> derived from baseline</div>
+                        <div style={{ marginTop: 4, fontSize: 10, fontFamily: "monospace", color: "#8A8886", display: "flex", alignItems: "center", gap: 4 }}>
+                          <GitBranch style={{ width: 11, height: 11 }} /> derived from baseline
+                        </div>
                       )}
                     </div>
                   );
