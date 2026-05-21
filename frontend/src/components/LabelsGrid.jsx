@@ -395,7 +395,7 @@ function CellValue({ col, label }) {
   }
   if (col.key === "maturity") {
     const cls = MATURITY_COLOR[v] || "bg-slate-100 text-slate-500 border-slate-200";
-    return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold border ${cls}`}>{v !== undefined && v !== null ? `${v}%` : "—"}</span>;
+    return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold border ${cls}`}>{v === "Deprecated" ? "Deprecated" : v !== undefined ? `${v}%` : "—"}</span>;
   }
   if (col.key === "level") {
     return <span className="text-[10px] text-slate-600">{v}</span>;

@@ -8,15 +8,15 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { Badge } from "../components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, Layers, Users } from "lucide-react";
 
 const OWNER_OPTIONS = ["BeGas", "HERKO", "Shared"];
 
 const ownerColor = {
-  BeGas: "bg-blue-100 text-blue-700 border-blue-200",
-  HERKO: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Shared: "bg-amber-100 text-amber-700 border-amber-200",
+  BeGas: "bg-blue-50 text-blue-700 border-blue-200",
+  HERKO: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Shared: "bg-amber-50 text-amber-700 border-amber-200",
 };
 
 function WpForm({ initial, ecus, onSubmit, onCancel, loading }) {
@@ -92,26 +92,29 @@ export default function WorkPackagesPage() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [saving, setSaving] = useState(false);
   const [filterText, setFilterText] = useState("");
   const [filterEcu, setFilterEcu] = useState("__all");
 
-  const load = useCallback(async () => {
-    try {
-      const [wRes, eRes] = await Promise.all([
-        api.get("/v1/work-packages"),
-        api.get("/ecus"),
-      ]);
-      setWps(wRes.data);
-      setEcus(eRes.data);
-    } catch (e) {
-      toast.error("Failed to load data");
-    } finally {
-      setLoading(false);
-    }
+  const loadWps = useCallback(async () => {
+    const res = await api.get("/v1/work-packages");
+    setWps(res.data);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [wRes, eRes] = await Promise.all([api.get("/v1/work-packages"), api.get("/ecus")]);
+        setWps(wRes.data);
+        setEcus(eRes.data);
+      } catch {
+        toast.error("Failed to load data");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   const filtered = wps.filter((wp) => {
     if (filterEcu !== "__all" && wp.ecu_id !== filterEcu) return false;
@@ -128,7 +131,7 @@ export default function WorkPackagesPage() {
       await api.post("/v1/work-packages", form);
       toast.success("WorkPackage created");
       setCreateOpen(false);
-      await load();
+      await loadWps();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Create failed");
     } finally {
@@ -142,7 +145,7 @@ export default function WorkPackagesPage() {
       await api.patch(`/v1/work-packages/${editTarget.id}`, form);
       toast.success("WorkPackage updated");
       setEditTarget(null);
-      await load();
+      await loadWps();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Update failed");
     } finally {
@@ -150,14 +153,16 @@ export default function WorkPackagesPage() {
     }
   };
 
-  const handleDelete = async (wp) => {
-    if (!window.confirm(`Delete WorkPackage "${wp.code} — ${wp.name}"?`)) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/v1/work-packages/${wp.id}`);
+      await api.delete(`/v1/work-packages/${deleteTarget.id}`);
       toast.success("Deleted");
-      await load();
+      setDeleteTarget(null);
+      await loadWps();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Delete failed");
+      setDeleteTarget(null);
     }
   };
 
@@ -250,7 +255,7 @@ export default function WorkPackagesPage() {
                         size="sm"
                         variant="ghost"
                         className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                        onClick={() => handleDelete(wp)}
+                        onClick={() => setDeleteTarget(wp)}
                         disabled={(wp.label_count ?? 0) > 0}
                         title={(wp.label_count ?? 0) > 0 ? "Has labels — cannot delete" : "Delete"}
                       >
@@ -282,6 +287,22 @@ export default function WorkPackagesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete WorkPackage?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-mono font-semibold">{deleteTarget?.code}</span> — {deleteTarget?.name} will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

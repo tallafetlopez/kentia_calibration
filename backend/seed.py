@@ -148,16 +148,18 @@ async def seed_all(db):
 
     # WorkPackages
     wp_id_map = {}
+    wp_docs = []
     for code, name, responsible, sub_wp in DEMO_WORK_PACKAGES:
         wp_id = _uuid()
         wp_id_map[code] = wp_id
-        await db.work_packages.insert_one({
+        wp_docs.append({
             "id": wp_id, "code": code, "name": name,
             "description": f"WorkPackage {code} — {name}",
             "ecu_id": ecm_id, "sub_workpackage": sub_wp,
             "responsible": responsible, "active": True,
             "created_at": now,
         })
+    await db.work_packages.insert_many(wp_docs)
 
     # Software Releases
     sr_ids = [_uuid(), _uuid(), _uuid()]

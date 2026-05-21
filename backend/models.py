@@ -5,18 +5,28 @@ import uuid
 from enum import Enum
 
 
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+LabelOwner = Literal["BeGas", "HERKO", "Shared"]
+LabelMaturity = Literal["0", "25", "75", "100", "Deprecated"]
+
+
 # ------- WorkPackage -------
 
 class WorkPackage(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = Field(default_factory=_uuid)
     code: str                         # AIR_ADM, TRQ_ADM, FUE_DFC, …
     name: str
     description: str = ""
     ecu_id: str
     sub_workpackage: Optional[str] = None
-    responsible: Literal["BeGas", "HERKO", "Shared"] = "BeGas"
+    responsible: LabelOwner = "BeGas"
     active: bool = True
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=_now)
 
 class WorkPackageCreate(BaseModel):
     code: str
@@ -24,13 +34,13 @@ class WorkPackageCreate(BaseModel):
     description: str = ""
     ecu_id: str
     sub_workpackage: Optional[str] = None
-    responsible: Literal["BeGas", "HERKO", "Shared"] = "BeGas"
+    responsible: LabelOwner = "BeGas"
 
 class WorkPackageUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     sub_workpackage: Optional[str] = None
-    responsible: Optional[Literal["BeGas", "HERKO", "Shared"]] = None
+    responsible: Optional[LabelOwner] = None
     active: Optional[bool] = None
 
 # ------- Calibration Files -------
@@ -40,12 +50,6 @@ class CalibrationFileType(str, Enum):
     DCM = "DCM"
     S37 = "S37"
     OTHER = "OTHER"
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 class CalibrationFile(BaseModel):
     id: str = Field(default_factory=_uuid)
@@ -87,8 +91,6 @@ ReviewStatus = Literal["PENDING", "ACCEPTED", "REWORK_REQUIRED"]
 LabelConfidence = Literal["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"]
 LabelLevel = Literal["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"]
 YesNo = Literal["YES", "NO"]
-LabelOwner = Literal["BeGas", "HERKO", "Shared"]
-LabelMaturity = Literal["0", "25", "75", "100", "Deprecated"]
 
 # ------- Users -------
 class UserPublic(BaseModel):

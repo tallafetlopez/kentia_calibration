@@ -1,10 +1,12 @@
 """WorkPackages router — BeGas req #4."""
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Request
 from typing import Optional
-from auth_utils import get_current_user
+from pymongo import ReturnDocument
+
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from auth_utils import get_current_user, require_role
 from models import WorkPackageCreate, WorkPackageUpdate, _uuid, _now
 
 router = APIRouter(prefix="/work-packages", tags=["WorkPackages"])
@@ -33,11 +35,22 @@ async def list_work_packages(
         filt["ecu_id"] = ecu_id
     if active is not None:
         filt["active"] = active
-    wps = await db.work_packages.find(filt, {"_id": 0}).to_list(500)
-    # Annotate with label count
-    for wp in wps:
-        wp["label_count"] = await db.labels.count_documents({"work_package_id": wp["id"]})
-    return wps
+    pipeline = [
+        {"$match": filt},
+        {"$project": {"_id": 0}},
+        {"$lookup": {
+            "from": "labels",
+            "let": {"wp_id": "$id"},
+            "pipeline": [
+                {"$match": {"$expr": {"$eq": ["$work_package_id", "$$wp_id"]}}},
+                {"$count": "n"},
+            ],
+            "as": "_lc",
+        }},
+        {"$addFields": {"label_count": {"$ifNull": [{"$arrayElemAt": ["$_lc.n", 0]}, 0]}}},
+        {"$project": {"_lc": 0}},
+    ]
+    return await db.work_packages.aggregate(pipeline).to_list(500)
 
 
 @router.get("/{wp_id}")
@@ -55,11 +68,7 @@ async def get_work_package(wp_id: str, request: Request):
 async def create_work_package(body: WorkPackageCreate, request: Request):
     db = await _db()
     user = await _user(request)
-    # Only DM_Administrator can create WPs
-    roles = set(user.get("roles", []))
-    if "DM_Administrator" not in roles and user.get("active_role") != "DM_Administrator":
-        raise HTTPException(403, "Only DM_Administrator can manage WorkPackages")
-    # Code must be unique per ECU
+    require_role(user, "DM_Administrator")
     existing = await db.work_packages.find_one({"code": body.code, "ecu_id": body.ecu_id})
     if existing:
         raise HTTPException(400, f"WorkPackage code '{body.code}' already exists for this ECU")
@@ -76,16 +85,16 @@ async def create_work_package(body: WorkPackageCreate, request: Request):
 async def update_work_package(wp_id: str, body: WorkPackageUpdate, request: Request):
     db = await _db()
     user = await _user(request)
-    roles = set(user.get("roles", []))
-    if "DM_Administrator" not in roles and user.get("active_role") != "DM_Administrator":
-        raise HTTPException(403, "Only DM_Administrator can manage WorkPackages")
-    wp = await db.work_packages.find_one({"id": wp_id}, {"_id": 0})
-    if not wp:
-        raise HTTPException(404, "WorkPackage not found")
+    require_role(user, "DM_Administrator")
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
-    if patch:
-        await db.work_packages.update_one({"id": wp_id}, {"$set": patch})
-    updated = await db.work_packages.find_one({"id": wp_id}, {"_id": 0})
+    updated = await db.work_packages.find_one_and_update(
+        {"id": wp_id},
+        {"$set": patch} if patch else {"$set": {}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        raise HTTPException(404, "WorkPackage not found")
     updated["label_count"] = await db.labels.count_documents({"work_package_id": wp_id})
     return updated
 
@@ -94,9 +103,7 @@ async def update_work_package(wp_id: str, body: WorkPackageUpdate, request: Requ
 async def delete_work_package(wp_id: str, request: Request):
     db = await _db()
     user = await _user(request)
-    roles = set(user.get("roles", []))
-    if "DM_Administrator" not in roles and user.get("active_role") != "DM_Administrator":
-        raise HTTPException(403, "Only DM_Administrator can manage WorkPackages")
+    require_role(user, "DM_Administrator")
     wp = await db.work_packages.find_one({"id": wp_id}, {"_id": 0})
     if not wp:
         raise HTTPException(404, "WorkPackage not found")

@@ -61,3 +61,19 @@ async def get_current_user(request: Request, db):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+def user_has_role(user: dict, *allowed_roles: str) -> bool:
+    active = user.get("active_role")
+    roles = set(user.get("roles", []))
+    if active and active in allowed_roles:
+        return True
+    return bool(roles.intersection(set(allowed_roles)))
+
+
+def require_role(user: dict, *allowed_roles: str):
+    if not user_has_role(user, *allowed_roles):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Required role: {' or '.join(allowed_roles)}",
+        )

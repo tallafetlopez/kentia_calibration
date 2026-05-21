@@ -8,7 +8,7 @@ ROOT_DIR = Path(__file__).parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from auth_utils import verify_password, create_access_token, get_current_user, hash_password
+from auth_utils import verify_password, create_access_token, get_current_user, hash_password, require_role, user_has_role
 from seed import seed_all, _make_labels
 from routers import sw_releases, datasets, vehicle_sw_ids, a2l
 from routers import traceability as traceability_router
@@ -75,22 +75,6 @@ async def log_audit(entity_type: str, entity_id: str, action: str, author: str,
         "justification": justification,
     }
     await db.audit_log.insert_one(entry)
-
-
-def user_has_role(user: dict, *allowed_roles: str) -> bool:
-    active = user.get("active_role")
-    roles = set(user.get("roles", []))
-    if active and active in allowed_roles:
-        return True
-    return bool(roles.intersection(set(allowed_roles)))
-
-
-def require_role(user: dict, *allowed_roles: str):
-    if not user_has_role(user, *allowed_roles):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Requires role(s): {', '.join(allowed_roles)} (active: {user.get('active_role')})",
-        )
 
 
 # -------- Startup --------
