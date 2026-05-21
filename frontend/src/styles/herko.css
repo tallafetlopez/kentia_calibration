@@ -1,0 +1,204 @@
+/* HERKO Design System */
+:root {
+  --herko-primary: #2D5016;
+  --herko-primary-hover: #1F3810;
+  --herko-accent: #7CBA00;
+  --herko-bg: #FFFFFF;
+  --herko-bg-light: #F3F3F3;
+  --herko-bg-lightest: #F9F9F9;
+  --herko-bg-selection: #E8F4E8;
+  --herko-text: #3C3C3C;
+  --herko-text-secondary: #666666;
+  --herko-text-muted: #999999;
+  --herko-border: #E5E5E5;
+  --herko-border-input: #CCCCCC;
+  --herko-edit: #997755;
+  --herko-app: #FF8C00;
+  --herko-rc: #0078D4;
+  --herko-rel: #7CBA00;
+  --herko-dep: #D13438;
+}
+
+/* Global */
+* { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; box-sizing: border-box; }
+
+body { background-color: #FFFFFF; color: #3C3C3C; font-size: 14px; line-height: 1.5; margin: 0; }
+
+h1 { font-size: 28px; font-weight: 700; margin-bottom: 16px; color: #3C3C3C; }
+h2 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #3C3C3C; }
+h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #3C3C3C; }
+
+/* Layout */
+.herko-layout { display: flex; flex-direction: column; min-height: 100vh; }
+.herko-main { max-width: 1440px; margin: 0 auto; padding: 32px 24px; flex: 1; }
+.herko-page { background: #FFFFFF; }
+
+/* Cards */
+.herko-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  padding: 24px;
+}
+
+/* Buttons */
+.herko-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 20px; border-radius: 4px; font-size: 14px;
+  font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+  border: none; font-family: inherit; white-space: nowrap;
+}
+.herko-btn-primary { background-color: #2D5016; color: #FFFFFF; }
+.herko-btn-primary:hover:not(:disabled) { background-color: #1F3810; }
+.herko-btn-secondary { background-color: transparent; border: 1px solid #2D5016; color: #2D5016; }
+.herko-btn-secondary:hover:not(:disabled) { background-color: #F3F3F3; }
+.herko-btn-danger { background-color: #D13438; color: #FFFFFF; }
+.herko-btn-danger:hover:not(:disabled) { background-color: #A13135; }
+.herko-btn:disabled { background-color: #CCCCCC; color: #999999; cursor: not-allowed; border-color: #CCCCCC; }
+.herko-btn-sm { padding: 6px 12px; font-size: 12px; }
+.herko-btn-lg { padding: 12px 24px; font-size: 14px; }
+
+/* Inputs */
+.herko-input {
+  width: 100%; border: 1px solid #CCCCCC; border-radius: 4px;
+  padding: 8px 12px; font-family: inherit; font-size: 14px;
+  color: #3C3C3C; background: #FFFFFF; outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.herko-input:focus { border-color: #2D5016; box-shadow: 0 0 0 3px rgba(45,80,22,0.1); }
+.herko-input::placeholder { color: #999999; }
+.herko-input.error { border-color: #D13438; }
+
+.herko-label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: #3C3C3C; margin-bottom: 4px;
+}
+.herko-label .required { color: #D13438; margin-left: 2px; }
+
+/* Tables */
+.herko-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.herko-table thead tr { background-color: #F3F3F3; }
+.herko-table th {
+  padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px;
+  color: #3C3C3C; border-bottom: 2px solid #E5E5E5; white-space: nowrap;
+  user-select: none; cursor: pointer;
+}
+.herko-table th:hover { background-color: #E8E8E8; }
+.herko-table td { padding: 10px 12px; border-bottom: 1px solid #E5E5E5; color: #3C3C3C; }
+.herko-table tbody tr:nth-child(odd) { background-color: #FFFFFF; }
+.herko-table tbody tr:nth-child(even) { background-color: #F9F9F9; }
+.herko-table tbody tr:hover { background-color: #F3F3F3; }
+.herko-table tbody tr.selected { background-color: #E8F4E8; }
+
+/* State Badges */
+.herko-badge {
+  display: inline-block; padding: 3px 8px; border-radius: 2px;
+  font-size: 11px; font-weight: 700; color: #FFFFFF; white-space: nowrap;
+}
+.herko-badge-EDIT { background-color: #997755; }
+.herko-badge-UNDER_APPROVAL,.herko-badge-APP { background-color: #FF8C00; }
+.herko-badge-RELEASE_CANDIDATE,.herko-badge-RC { background-color: #0078D4; }
+.herko-badge-RELEASED,.herko-badge-REL { background-color: #7CBA00; }
+.herko-badge-DEPRECATED,.herko-badge-DEP { background-color: #D13438; }
+.herko-badge-DRAFT { background-color: #999999; }
+
+/* Tabs */
+.herko-tabs { display: flex; border-bottom: 2px solid #E5E5E5; margin-bottom: 24px; }
+.herko-tab {
+  padding: 10px 20px; font-size: 14px; font-weight: 400; color: #666666;
+  cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: all 0.2s ease; font-family: inherit;
+}
+.herko-tab:hover { color: #3C3C3C; }
+.herko-tab.active { color: #2D5016; font-weight: 700; border-bottom-color: #2D5016; }
+
+/* Stepper */
+.herko-stepper { display: flex; align-items: center; margin-bottom: 32px; }
+.herko-step { display: flex; align-items: center; flex: 1; }
+.herko-step-circle {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0;
+}
+.herko-step-circle.completed { background-color: #2D5016; color: #FFFFFF; }
+.herko-step-circle.active { background-color: #2D5016; color: #FFFFFF; box-shadow: 0 0 0 4px rgba(45,80,22,0.2); }
+.herko-step-circle.inactive { background-color: #CCCCCC; color: #FFFFFF; }
+.herko-step-label { margin-left: 10px; font-size: 13px; font-weight: 600; color: #3C3C3C; }
+.herko-step-label.inactive { color: #999999; }
+.herko-step-connector { height: 2px; flex: 1; margin: 0 12px; }
+.herko-step-connector.completed { background-color: #2D5016; }
+.herko-step-connector.inactive { background-color: #CCCCCC; }
+
+/* Sidebar */
+.herko-sidebar { width: 280px; flex-shrink: 0; background-color: #F3F3F3; padding: 20px; border-left: 1px solid #E5E5E5; }
+
+/* Checkbox / Radio */
+.herko-checkbox { accent-color: #2D5016; width: 14px; height: 14px; cursor: pointer; }
+.herko-radio { accent-color: #2D5016; width: 14px; height: 14px; cursor: pointer; }
+
+/* Pagination */
+.herko-pagination { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid #E5E5E5; font-size: 12px; color: #666666; }
+.herko-page-btn {
+  padding: 4px 8px; border: 1px solid #E5E5E5; background: #FFFFFF;
+  cursor: pointer; border-radius: 2px; font-size: 12px; min-width: 28px;
+  text-align: center; color: #3C3C3C; transition: all 0.15s ease;
+}
+.herko-page-btn:hover { background-color: #F3F3F3; }
+.herko-page-btn.active { background-color: #2D5016; color: #FFFFFF; border-color: #2D5016; font-weight: 700; }
+
+/* Modal */
+.herko-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.herko-modal { background: #FFFFFF; border-radius: 4px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 24px; position: relative; }
+.herko-modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #3C3C3C; }
+.herko-modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; font-size: 18px; cursor: pointer; color: #999999; line-height: 1; }
+.herko-modal-close:hover { color: #3C3C3C; }
+.herko-modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; padding-top: 16px; border-top: 1px solid #E5E5E5; }
+
+/* Misc */
+.herko-section-title { font-size: 16px; font-weight: 700; color: #3C3C3C; margin-bottom: 16px; }
+.herko-empty { text-align: center; padding: 48px; color: #999999; font-size: 14px; }
+.herko-loading { text-align: center; padding: 48px; color: #999999; font-size: 14px; }
+.herko-error-msg { font-size: 11px; color: #D13438; margin-top: 4px; }
+
+/* Form groups */
+.herko-form-group { margin-bottom: 16px; }
+.herko-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Filters bar */
+.herko-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 20px; }
+.herko-filters .herko-input { width: 240px; }
+.herko-filters select { width: 160px; }
+
+/* Search input */
+.herko-search-wrap { position: relative; }
+.herko-search-wrap .herko-input { padding-left: 32px; }
+.herko-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #999999; }
+
+/* Header nav specific */
+.herko-header { background-color: #2D5016; height: 56px; display: flex; align-items: center; padding: 0 24px; gap: 0; position: sticky; top: 0; z-index: 100; }
+.herko-header-logo { color: #FFFFFF; font-size: 16px; font-weight: 700; margin-right: 32px; display: flex; align-items: center; gap: 8px; text-decoration: none; white-space: nowrap; }
+.herko-nav { display: flex; flex: 1; }
+.herko-nav-link { color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 400; padding: 0 16px; height: 56px; display: flex; align-items: center; text-decoration: none; transition: all 0.15s ease; border-bottom: 3px solid transparent; }
+.herko-nav-link:hover { color: #FFFFFF; background: rgba(255,255,255,0.1); }
+.herko-nav-link.active { color: #FFFFFF; font-weight: 600; border-bottom-color: #7CBA00; }
+.herko-header-user { margin-left: auto; display: flex; align-items: center; gap: 10px; color: #FFFFFF; font-size: 13px; cursor: pointer; }
+.herko-avatar { width: 30px; height: 30px; border-radius: 50%; background-color: rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: #FFFFFF; }
+
+/* Select native */
+.herko-select {
+  width: 100%; border: 1px solid #CCCCCC; border-radius: 4px;
+  padding: 8px 12px; font-family: inherit; font-size: 14px;
+  color: #3C3C3C; background: #FFFFFF; outline: none; cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.herko-select:focus { border-color: #2D5016; box-shadow: 0 0 0 3px rgba(45,80,22,0.1); }
+
+/* Review items */
+.herko-review-item { padding: 16px; border: 1px solid #E5E5E5; border-radius: 4px; margin-bottom: 12px; background: #FFFFFF; }
+.herko-review-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.herko-review-number { width: 24px; height: 24px; border-radius: 50%; background: #2D5016; color: #FFFFFF; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* Approval panel */
+.herko-approval-panel { background: #F3F3F3; border: 1px solid #E5E5E5; border-radius: 4px; padding: 20px; }
+.herko-approval-title { font-size: 15px; font-weight: 700; color: #3C3C3C; margin-bottom: 4px; }
+.herko-approval-subtitle { font-size: 12px; color: #666666; margin-bottom: 16px; }

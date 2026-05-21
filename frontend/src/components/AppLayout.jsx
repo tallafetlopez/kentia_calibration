@@ -70,6 +70,19 @@ const TABS = [
       },
     ],
   },
+  {
+    id: "herko",
+    label: "HERKO View",
+    groups: [
+      {
+        label: "HERKO Design",
+        items: [
+          { to: "/herko/datasets", label: "Datasets", icon: Database },
+          { to: "/herko/labels", label: "Labels", icon: Layers },
+        ],
+      },
+    ],
+  },
 ];
 
 function RibbonBtn({ to, label, icon: Icon, end }) {

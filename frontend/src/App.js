@@ -20,6 +20,12 @@ import AdminPage from "./pages/AdminPage";
 import SwReleaseDCMViewer from "./pages/SwReleaseDCMViewer";
 import WorkPackagesPage from "./pages/WorkPackagesPage";
 import { Toaster } from "./components/ui/sonner";
+import HerkoLayout from "./pages/herko/HerkoLayout";
+import HerkoDatasetsPage from "./pages/herko/HerkoDatasetsPage";
+import HerkoCreateDatasetPage from "./pages/herko/HerkoCreateDatasetPage";
+import HerkoDatasetDetailPage from "./pages/herko/HerkoDatasetDetailPage";
+import HerkoReviewPage from "./pages/herko/HerkoReviewPage";
+import HerkoLabelsPage from "./pages/herko/HerkoLabelsPage";
 
 // Initialize dev bypass interceptors if needed
 setupDevBypassInterceptors();
@@ -127,6 +133,21 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
+          {/* HERKO Design System routes */}
+          <Route
+            path="/herko"
+            element={
+              <ProtectedRoute>
+                <HerkoLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="datasets" element={<HerkoDatasetsPage />} />
+            <Route path="datasets/create" element={<HerkoCreateDatasetPage />} />
+            <Route path="datasets/:id" element={<HerkoDatasetDetailPage />} />
+            <Route path="datasets/:id/review" element={<HerkoReviewPage />} />
+            <Route path="labels" element={<HerkoLabelsPage />} />
+          </Route>
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" richColors />
