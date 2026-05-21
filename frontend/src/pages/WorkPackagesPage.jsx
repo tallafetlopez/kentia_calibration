@@ -168,6 +168,7 @@ export default function WorkPackagesPage() {
   const ecuName = (id) => ecus.find((e) => e.id === id)?.name || id;
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Header */}
         <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
@@ -305,6 +306,6 @@ export default function WorkPackagesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
