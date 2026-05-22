@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/herko/sw-releases', label: 'SW Releases' },
   { to: '/herko/release-center', label: 'Release Center' },
   { to: '/herko/labels', label: 'Labels' },
+  { to: '/herko/audit-log', label: 'Audit Log' },
   { to: '/work-packages', label: 'WorkPackages' },
   { to: '/admin', label: 'Admin' },
 ]

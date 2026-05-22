@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Any
+from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from auth_utils import get_current_user
 
@@ -50,14 +50,20 @@ class TraceabilityChain(BaseModel):
 
 
 class AuditLogEntry(BaseModel):
-    """Audit log entry."""
+    """Audit log entry — normalised across both audit_log and audit_logs collections."""
+    id: Optional[str] = None
     action: str
-    entity: str
+    entity_type: str
     entity_id: str
+    dataset_id: Optional[str] = None
     from_state: Optional[str] = None
     to_state: Optional[str] = None
+    previous_value: Optional[Any] = None
+    new_value: Optional[Any] = None
     author: str
-    timestamp: datetime
+    date: datetime
+    justification: Optional[str] = None
+    extra: Optional[dict] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -136,34 +142,100 @@ async def get_traceability(
     return traceability
 
 
+def _normalise(doc: dict) -> AuditLogEntry:
+    """Normalise a document from either audit_log or audit_logs collection."""
+    entity_type = doc.get("entity_type") or doc.get("entity") or "unknown"
+    raw_date = doc.get("date") or doc.get("timestamp")
+    if isinstance(raw_date, str):
+        try:
+            raw_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+        except Exception:
+            raw_date = datetime.now(timezone.utc)
+    if raw_date is None:
+        raw_date = datetime.now(timezone.utc)
+
+    known_keys = {"_id", "id", "action", "entity_type", "entity", "entity_id", "dataset_id",
+                  "from_state", "to_state", "previous_value", "new_value", "author",
+                  "date", "timestamp", "justification"}
+    extra = {k: str(v) for k, v in doc.items() if k not in known_keys and k != "_id"}
+
+    return AuditLogEntry(
+        id=str(doc.get("id") or doc.get("_id") or ""),
+        action=doc.get("action", ""),
+        entity_type=entity_type,
+        entity_id=doc.get("entity_id", ""),
+        dataset_id=doc.get("dataset_id"),
+        from_state=doc.get("from_state"),
+        to_state=doc.get("to_state"),
+        previous_value=doc.get("previous_value"),
+        new_value=doc.get("new_value"),
+        author=doc.get("author", ""),
+        date=raw_date,
+        justification=doc.get("justification"),
+        extra=extra or None,
+    )
+
+
 @router.get("/audit-logs", response_model=List[AuditLogEntry])
 async def get_audit_logs(
-    entity: Optional[str] = Query(None),
+    entity_type: Optional[str] = Query(None),
     entity_id: Optional[str] = Query(None),
     author: Optional[str] = Query(None),
-    limit: int = Query(50, le=500),
+    action: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    limit: int = Query(200, le=500),
     db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_user),
 ):
-    """Get audit logs with optional filters, sorted by timestamp DESC."""
-    query = {}
-    if entity:
-        query["entity"] = entity
-    if entity_id:
-        query["entity_id"] = entity_id
-    if author:
-        query["author"] = author
+    """Get audit logs with filters, sorted by date DESC. Queries both collections."""
+    def build_query(type_field: str, date_field: str) -> dict:
+        q: dict = {}
+        if entity_type:
+            q[type_field] = entity_type
+        if entity_id:
+            q["entity_id"] = entity_id
+        if author:
+            q["author"] = {"$regex": author, "$options": "i"}
+        if action:
+            q["action"] = {"$regex": action, "$options": "i"}
+        date_filter: dict = {}
+        if from_date:
+            try:
+                date_filter["$gte"] = datetime.fromisoformat(from_date)
+            except Exception:
+                pass
+        if to_date:
+            try:
+                date_filter["$lte"] = datetime.fromisoformat(to_date)
+            except Exception:
+                pass
+        if date_filter:
+            q[date_field] = date_filter
+        return q
 
-    documents = await db.audit_logs.find(query).sort("timestamp", -1).limit(limit).to_list(None)
-    return [
-        AuditLogEntry(
-            action=doc["action"],
-            entity=doc["entity"],
-            entity_id=doc["entity_id"],
-            from_state=doc.get("from_state"),
-            to_state=doc.get("to_state"),
-            author=doc["author"],
-            timestamp=doc["timestamp"],
-        )
-        for doc in documents
-    ]
+    q1 = build_query("entity_type", "date")
+    q2 = build_query("entity", "timestamp")
+
+    docs1 = await db.audit_log.find(q1).sort("date", -1).limit(limit).to_list(None)
+    docs2 = await db.audit_logs.find(q2).sort("timestamp", -1).limit(limit).to_list(None)
+
+    all_docs = docs1 + docs2
+    all_docs.sort(
+        key=lambda d: (d.get("date") or d.get("timestamp") or datetime.min),
+        reverse=True,
+    )
+
+    return [_normalise(d) for d in all_docs[:limit]]
+
+
+@router.get("/audit-logs/authors", response_model=List[str])
+async def get_audit_log_authors(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Return distinct authors for autocomplete."""
+    a1 = await db.audit_log.distinct("author")
+    a2 = await db.audit_logs.distinct("author")
+    authors = sorted(set(a1 + a2) - {None, ""})
+    return authors
