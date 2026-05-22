@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../../lib/api'
+import { api } from '../../lib/api'
 import { toast } from 'sonner'
 
 // ── constants ──────────────────────────────────────────────────────────────

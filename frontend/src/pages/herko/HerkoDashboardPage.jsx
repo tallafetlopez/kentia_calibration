@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../../lib/api'
+import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { toast } from 'sonner'
 
