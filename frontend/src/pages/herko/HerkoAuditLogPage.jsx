@@ -145,8 +145,8 @@ export default function HerkoAuditLogPage() {
   // filters
   const [fromDate, setFromDate] = useState(defaultFrom())
   const [toDate, setToDate] = useState(defaultTo())
-  const [entityType, setEntityType] = useState('')
-  const [actionFilter, setActionFilter] = useState('')
+  const [entityTypeFilters, setEntityTypeFilters] = useState([])
+  const [actionFilters, setActionFilters] = useState([])
   const [authorFilter, setAuthorFilter] = useState('')
   const [entityIdFilter, setEntityIdFilter] = useState('')
   const [searchText, setSearchText] = useState('')
@@ -160,10 +160,10 @@ export default function HerkoAuditLogPage() {
   const load = useCallback(() => {
     setLoading(true)
     const params = { limit: 500 }
-    if (entityType) params.entity_type = entityType
+    if (entityTypeFilters.length > 0) params.entity_type = entityTypeFilters.join(',')
     if (entityIdFilter) params.entity_id = entityIdFilter
     if (authorFilter) params.author = authorFilter
-    if (actionFilter) params.action = actionFilter
+    if (actionFilters.length > 0) params.action = actionFilters.join(',')
     if (fromDate) params.from_date = fromDate + 'T00:00:00'
     if (toDate) params.to_date = toDate + 'T23:59:59'
 
@@ -171,7 +171,7 @@ export default function HerkoAuditLogPage() {
       .then(r => setEntries(r.data))
       .catch(() => toast.error('Failed to load audit log'))
       .finally(() => setLoading(false))
-  }, [entityType, entityIdFilter, authorFilter, actionFilter, fromDate, toDate])
+  }, [entityTypeFilters, entityIdFilter, authorFilter, actionFilters, fromDate, toDate])
 
   useEffect(() => { load() }, [load])
 
@@ -239,8 +239,8 @@ export default function HerkoAuditLogPage() {
   function clearFilters() {
     setFromDate(defaultFrom())
     setToDate(defaultTo())
-    setEntityType('')
-    setActionFilter('')
+    setEntityTypeFilters([])
+    setActionFilters([])
     setAuthorFilter('')
     setEntityIdFilter('')
     setSearchText('')
@@ -315,19 +315,41 @@ export default function HerkoAuditLogPage() {
               </div>
               <div>
                 <label style={labelStyle}>Entity Type</label>
-                <select value={entityType} onChange={e => { setEntityType(e.target.value); setPage(1) }} style={{ ...inputStyle, width: 150 }}>
-                  <option value="">All types</option>
-                  {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+                  {ENTITY_TYPES.map(et => (
+                    <label key={et} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', color: '#3C3C3C' }}>
+                      <input
+                        type="checkbox"
+                        checked={entityTypeFilters.includes(et)}
+                        onChange={e => {
+                          const updated = e.target.checked ? [...entityTypeFilters, et] : entityTypeFilters.filter(x => x !== et)
+                          setEntityTypeFilters(updated)
+                          setPage(1)
+                        }}
+                      />
+                      {et}
+                    </label>
+                  ))}
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Action</label>
-                <input
-                  placeholder="e.g. LABEL_UPDATED"
-                  value={actionFilter}
-                  onChange={e => { setActionFilter(e.target.value); setPage(1) }}
-                  style={{ ...inputStyle, width: 160 }}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+                  {['CREATED', 'LABEL_UPDATED', 'SUBMITTED_FOR_APPROVAL', 'REVIEWED', 'APPROVED', 'RELEASED', 'REJECTED', 'DEPRECATED'].map(ac => (
+                    <label key={ac} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', color: '#3C3C3C' }}>
+                      <input
+                        type="checkbox"
+                        checked={actionFilters.includes(ac)}
+                        onChange={e => {
+                          const updated = e.target.checked ? [...actionFilters, ac] : actionFilters.filter(x => x !== ac)
+                          setActionFilters(updated)
+                          setPage(1)
+                        }}
+                      />
+                      {ac}
+                    </label>
+                  ))}
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Author</label>

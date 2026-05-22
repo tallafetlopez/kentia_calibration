@@ -189,16 +189,23 @@ async def get_audit_logs(
     user: dict = Depends(get_user),
 ):
     """Get audit logs with filters, sorted by date DESC. Queries both collections."""
+    # Support comma-separated multi-values: "label,dataset" or "CREATED,APPROVED"
+    entity_types = [v.strip() for v in entity_type.split(",")] if entity_type else []
+    actions = [v.strip() for v in action.split(",")] if action else []
+
     def build_query(type_field: str, date_field: str) -> dict:
         q: dict = {}
-        if entity_type:
-            q[type_field] = entity_type
+        if entity_types:
+            q[type_field] = {"$in": entity_types} if len(entity_types) > 1 else entity_types[0]
         if entity_id:
             q["entity_id"] = entity_id
         if author:
             q["author"] = {"$regex": author, "$options": "i"}
-        if action:
-            q["action"] = {"$regex": action, "$options": "i"}
+        if actions:
+            if len(actions) == 1:
+                q["action"] = {"$regex": actions[0], "$options": "i"}
+            else:
+                q["action"] = {"$in": actions}
         date_filter: dict = {}
         if from_date:
             try:
