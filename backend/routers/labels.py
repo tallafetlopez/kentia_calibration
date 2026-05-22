@@ -12,13 +12,16 @@ Endpoints:
 
 from __future__ import annotations
 
+import io
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Union
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 _BACKEND_DIR = Path(__file__).parent.parent
@@ -30,6 +33,7 @@ if str(_PARSERS_DIR) not in sys.path:
 
 from parsers.a2l_parser import A2lParser          # noqa: E402
 from parsers.dcm_parser import DCMParser          # noqa: E402
+from parsers.dcm_writer import write_dcm          # noqa: E402
 
 router = APIRouter(tags=["Labels"])
 
@@ -166,6 +170,9 @@ async def _build_merged(sr: dict, db) -> list[dict]:
         in_a2l = char is not None
         in_dcm = (dcm_s or dcm_c or dcm_m) is not None
 
+        # Default value suggestion for labels missing DCM (use A2L lower_limit as fallback)
+        default_value_a2l = char.lower_limit if (char and not in_dcm) else None
+
         # Unit (A2L wins, fallback to DCM)
         unit = ""
         if char and char.unit:
@@ -226,7 +233,9 @@ async def _build_merged(sr: dict, db) -> list[dict]:
             "user_status":     meta.get("user_status",  "START"),
             "maturity_score":  meta.get("maturity_score", 0),
             "label_flags":     meta.get("label_flags",  []),
-            "save":            meta.get("save",         False),
+            "save":                meta.get("save",         False),
+            "default_value_a2l":   default_value_a2l,
+            "needs_default_assignment": (in_a2l and not in_dcm),
         })
 
     return labels
@@ -241,6 +250,20 @@ class LabelMetadataUpdate(BaseModel):
     user_status: Optional[str] = None
     label_flags: Optional[List[str]] = None
     save:        Optional[bool] = None
+
+
+class DcmExportRequest(BaseModel):
+    label_names:   Optional[List[str]] = None
+    only_saved:    bool = True
+    only_maturity: Optional[List[int]] = None
+    filename:      Optional[str] = None
+
+
+class MergeRequest(BaseModel):
+    base_sr_id:          str
+    overlay_sr_ids:      List[str]
+    strategy:            str = "overlay_wins"  # overlay_wins | base_wins | manual
+    manual_resolutions:  Optional[dict] = None
 
 
 class LabelMaturityUpdate(BaseModel):
@@ -473,3 +496,256 @@ async def update_label_maturity(
         upsert=True,
     )
     return {"ok": True, "score": body.score}
+
+
+# ─── Export DCM ───────────────────────────────────────────────────────────────
+
+@router.post("/sw-releases/{sr_id}/labels/export-dcm")
+async def export_labels_to_dcm(
+    sr_id: str,
+    body:  DcmExportRequest,
+    user:  dict = Depends(get_current_user),
+):
+    """Export selected labels to a downloadable DCM file."""
+    db = await get_db()
+    sr = await _require_sr(sr_id, db)
+    all_labels = await _build_merged(sr, db)
+
+    # Filter by explicit name list
+    if body.label_names:
+        wanted   = set(body.label_names)
+        filtered = [l for l in all_labels if l["name"] in wanted]
+    else:
+        filtered = all_labels
+
+    # Filter by save flag when no explicit names given
+    if body.only_saved and not body.label_names:
+        filtered = [l for l in filtered if l.get("save")]
+
+    # Filter by maturity
+    if body.only_maturity:
+        allowed  = set(body.only_maturity)
+        filtered = [l for l in filtered if (l.get("maturity_score") or 0) in allowed]
+
+    if not filtered:
+        raise HTTPException(400, "No labels match the export criteria")
+
+    # Re-fetch full values from DCM parser (merged view only has value_preview)
+    scalars_map: dict = {}
+    curves_map:  dict = {}
+    maps_map:    dict = {}
+    if sr.get("dcm_path") and Path(sr["dcm_path"]).exists():
+        parsed      = _cached_parse_dcm(sr["dcm_path"])
+        scalars_map = {p["name"]: p for p in parsed.get("scalars", [])}
+        curves_map  = {p["name"]: p for p in parsed.get("curves",  [])}
+        maps_map    = {p["name"]: p for p in parsed.get("maps",    [])}
+
+    enriched: list[dict] = []
+    for label in filtered:
+        n   = label["name"]
+        t   = label["type"]
+        rec = {
+            "name":             n,
+            "type":             t,
+            "long_identifier":  label.get("long_identifier", ""),
+            "unit":             label.get("unit", ""),
+        }
+        if t == "scalar":
+            src       = scalars_map.get(n, {})
+            rec["value"] = src.get("value", 0.0)
+        elif t == "curve":
+            src           = curves_map.get(n, {})
+            rec["x_axis"] = src.get("x_axis", [])
+            rec["values"] = src.get("values", [])
+            rec["unit_x"] = src.get("unit_x", "")
+            rec["unit_w"] = src.get("unit_w", "")
+        elif t == "map":
+            src           = maps_map.get(n, {})
+            rec["x_axis"] = src.get("x_axis", [])
+            rec["y_axis"] = src.get("y_axis", [])
+            rec["values"] = src.get("values", [])
+            rec["unit_x"] = src.get("unit_x", "")
+            rec["unit_y"] = src.get("unit_y", "")
+            rec["unit_w"] = src.get("unit_w", "")
+        enriched.append(rec)
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".dcm", delete=False, encoding="iso-8859-1") as tmp:
+        tmp_path = tmp.name
+
+    write_dcm(enriched, tmp_path, header={
+        "project":    f"SW Release {sr.get('version', sr_id)}",
+        "dataset":    body.filename or f"export_{ts}",
+        "created_by": user.get("email", "kentia"),
+    })
+
+    await (await get_db()).audit_log.insert_one({
+        "ts":             _now_iso(),
+        "action":         "DCM_EXPORT",
+        "user":           user.get("email"),
+        "sw_release_id":  sr_id,
+        "label_count":    len(enriched),
+    })
+
+    content = Path(tmp_path).read_bytes()
+    Path(tmp_path).unlink(missing_ok=True)
+    fname = (body.filename or f"export_{ts}") + ("" if (body.filename or "").endswith(".dcm") else ".dcm")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ─── Merge preview + export ───────────────────────────────────────────────────
+
+@router.post("/labels/merge-preview")
+async def merge_preview(
+    body: MergeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Dry-run merge: returns identical, conflict, only-in-base, only-in-overlay counts.
+    Does NOT modify anything.
+    """
+    db = await get_db()
+    base_sr     = await _require_sr(body.base_sr_id, db)
+    base_labels = {l["name"]: l for l in await _build_merged(base_sr, db)}
+
+    overlays = []
+    for ov_id in body.overlay_sr_ids:
+        ov_sr     = await _require_sr(ov_id, db)
+        ov_labels = {l["name"]: l for l in await _build_merged(ov_sr, db)}
+        overlays.append({"sr_id": ov_id, "version": ov_sr.get("version", ""), "labels": ov_labels})
+
+    all_names = set(base_labels) | {n for ov in overlays for n in ov["labels"]}
+
+    plan: dict = {
+        "identical":        [],
+        "conflicts":        [],
+        "only_in_base":     [],
+        "only_in_overlay":  [],
+    }
+
+    for name in sorted(all_names):
+        base_v    = base_labels.get(name, {}).get("value_preview")
+        ov_vals   = [
+            {"sr": ov["sr_id"], "version": ov["version"], "value": ov["labels"][name].get("value_preview")}
+            for ov in overlays if name in ov["labels"]
+        ]
+        in_base     = name in base_labels
+        in_overlay  = bool(ov_vals)
+
+        if in_base and not in_overlay:
+            plan["only_in_base"].append({"name": name, "value": base_v})
+        elif not in_base and in_overlay:
+            plan["only_in_overlay"].append({"name": name, "values": ov_vals})
+        elif in_base and in_overlay:
+            distinct = {str(base_v)} | {str(o["value"]) for o in ov_vals}
+            if len(distinct) == 1:
+                plan["identical"].append({"name": name, "value": base_v})
+            else:
+                resolution = (
+                    "base"         if body.strategy == "base_wins"    else
+                    "overlay_last" if body.strategy == "overlay_wins" else
+                    (body.manual_resolutions or {}).get(name, "unresolved")
+                )
+                plan["conflicts"].append({
+                    "name":           name,
+                    "base_value":     base_v,
+                    "overlay_values": ov_vals,
+                    "resolution":     resolution,
+                })
+
+    plan["summary"] = {
+        "total_labels":         len(all_names),
+        "identical_count":      len(plan["identical"]),
+        "conflicts_count":      len(plan["conflicts"]),
+        "only_in_base_count":   len(plan["only_in_base"]),
+        "only_in_overlay_count": len(plan["only_in_overlay"]),
+    }
+    return plan
+
+
+@router.post("/labels/merge-export")
+async def merge_export(
+    body: MergeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Apply merge strategy and return a DCM with the merged result."""
+    db = await get_db()
+
+    def _find_in(parsed: dict, name: str):
+        for kind in ("scalars", "curves", "maps"):
+            for p in parsed.get(kind, []):
+                if p["name"] == name:
+                    return p
+        return None
+
+    base_sr     = await _require_sr(body.base_sr_id, db)
+    parsed_base = _cached_parse_dcm(base_sr["dcm_path"]) if base_sr.get("dcm_path") and Path(base_sr["dcm_path"]).exists() else {}
+
+    overlays_parsed: list[dict] = []
+    for ov_id in body.overlay_sr_ids:
+        ov_sr = await _require_sr(ov_id, db)
+        if ov_sr.get("dcm_path") and Path(ov_sr["dcm_path"]).exists():
+            overlays_parsed.append(_cached_parse_dcm(ov_sr["dcm_path"]))
+        else:
+            overlays_parsed.append({})
+
+    # Collect all label names across base + overlays
+    all_names: set[str] = set()
+    for kind in ("scalars", "curves", "maps"):
+        for p in parsed_base.get(kind, []):
+            all_names.add(p["name"])
+        for ov in overlays_parsed:
+            for p in ov.get(kind, []):
+                all_names.add(p["name"])
+
+    merged: list[dict] = []
+    for name in sorted(all_names):
+        winner = _find_in(parsed_base, name)
+        if body.strategy == "overlay_wins":
+            for ov in overlays_parsed:
+                cand = _find_in(ov, name)
+                if cand:
+                    winner = cand
+        elif body.strategy == "base_wins":
+            pass  # winner stays as base
+        elif body.strategy == "manual":
+            res = (body.manual_resolutions or {}).get(name, "base")
+            if res.startswith("overlay_"):
+                idx  = int(res.split("_")[1])
+                cand = _find_in(overlays_parsed[idx], name) if idx < len(overlays_parsed) else None
+                if cand:
+                    winner = cand
+        if winner:
+            merged.append(winner)
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".dcm", delete=False, encoding="iso-8859-1") as tmp:
+        tmp_path = tmp.name
+
+    write_dcm(merged, tmp_path, header={
+        "project":    "Merged calibration",
+        "dataset":    f"merge_{ts}",
+        "created_by": user.get("email", "kentia"),
+    })
+
+    await db.audit_log.insert_one({
+        "ts":           _now_iso(),
+        "action":       "DCM_MERGE",
+        "user":         user.get("email"),
+        "base_sr":      body.base_sr_id,
+        "overlay_srs":  body.overlay_sr_ids,
+        "strategy":     body.strategy,
+        "merged_count": len(merged),
+    })
+
+    content = Path(tmp_path).read_bytes()
+    Path(tmp_path).unlink(missing_ok=True)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="merged_{ts}.dcm"'},
+    )

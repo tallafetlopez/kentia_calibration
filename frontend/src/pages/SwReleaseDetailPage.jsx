@@ -297,6 +297,12 @@ export default function SwReleaseDetailPage() {
                     >
                       Label Viewer (CRETA) ↗
                     </button>
+                    <button
+                      onClick={() => navigate(`/software-releases/${v1SwReleaseId || id}/merge`)}
+                      className="text-xs text-amber-700 hover:text-amber-900 font-semibold border border-amber-300 px-2 py-0.5 rounded"
+                    >
+                      🔀 Merge
+                    </button>
                   </div>
                 </div>
               ) : (

@@ -15,8 +15,17 @@ const NAV_ITEMS = [
 ]
 
 export default function Header() {
-  const { user, logout } = useAuth()
+  const { user, logout, switchRole } = useAuth()
   const initials = user?.name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || 'U'
+
+  const handleRoleChange = async (e) => {
+    const role = e.target.value
+    if (role && role !== user?.active_role) {
+      try {
+        await switchRole(role)
+      } catch (_) {}
+    }
+  }
 
   return (
     <header className="herko-header">
@@ -41,6 +50,33 @@ export default function Header() {
       <div className="herko-header-user">
         <div className="herko-avatar">{initials}</div>
         <span style={{ fontSize: 13 }}>{user?.name || 'User'}</span>
+        {user?.roles?.length > 1 && (
+          <select
+            value={user?.active_role || ''}
+            onChange={handleRoleChange}
+            title="Switch active role"
+            style={{
+              background: 'rgba(255,255,255,0.15)',
+              border: '1px solid rgba(255,255,255,0.3)',
+              color: '#fff',
+              padding: '3px 6px',
+              borderRadius: 3,
+              cursor: 'pointer',
+              fontSize: 11,
+              marginLeft: 8,
+              maxWidth: 180,
+            }}
+          >
+            {user.roles.map(r => (
+              <option key={r} value={r} style={{ color: '#1f2937', background: '#fff' }}>{r}</option>
+            ))}
+          </select>
+        )}
+        {user?.roles?.length === 1 && (
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginLeft: 8, fontFamily: 'monospace' }}>
+            {user.active_role}
+          </span>
+        )}
         <button
           onClick={logout}
           style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 3, cursor: 'pointer', fontSize: 12, marginLeft: 8 }}
