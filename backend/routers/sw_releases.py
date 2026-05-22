@@ -23,9 +23,17 @@ class SWReleaseBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class SWReleaseCreate(SWReleaseBase):
+class SWReleaseCreate(BaseModel):
     """Model for creating a new SW Release."""
-    pass
+    identifier: str
+    version: str
+    supplier: str = ""
+    description: Optional[str] = None
+    ecu_id: Optional[str] = None
+    a2l_filename: Optional[str] = None
+    released_date: Optional[datetime] = None
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SWReleaseResponse(SWReleaseBase):
@@ -110,7 +118,9 @@ async def create_sw_release(
         "version": body.version,
         "supplier": body.supplier,
         "a2l_filename": body.a2l_filename,
-        "released_date": body.released_date,
+        "description": body.description,
+        "ecu_id": body.ecu_id,
+        "released_date": body.released_date or datetime.utcnow(),
         "status": "DRAFT",
         "created_by": user.get("email"),
         "created_at": datetime.utcnow(),
