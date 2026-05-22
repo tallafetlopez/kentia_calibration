@@ -265,6 +265,9 @@ export default function HerkoDashboardPage() {
   const [stats, setStats] = useState(null)
   const [activity, setActivity] = useState([])
   const [contextCounts, setContextCounts] = useState({})
+  const [labelCount, setLabelCount] = useState(null)
+  const [a2lPending, setA2lPending] = useState(0)
+  const [changesNeedJustify, setChangesNeedJustify] = useState(0)
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(null)
 
@@ -274,19 +277,47 @@ export default function HerkoDashboardPage() {
       api.get('/dashboard/stats'),
       api.get('/v1/traceability/audit-logs', { params: { limit: 8 } }),
       api.get('/datasets'),
-    ]).then(([statsRes, auditRes, dsRes]) => {
+      api.get('/software-releases'),
+    ]).then(([statsRes, auditRes, dsRes, srRes]) => {
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data)
       if (auditRes.status === 'fulfilled') setActivity(auditRes.value.data || [])
+
       if (dsRes.status === 'fulfilled') {
+        const datasets = dsRes.value.data || []
         const counts = {}
-        ;(dsRes.value.data || []).forEach(ds => {
+        datasets.forEach(ds => {
           const ctx = ds.deployment_context || 'UNKNOWN'
           counts[ctx] = (counts[ctx] || 0) + 1
         })
         setContextCounts(counts)
       }
+
+      if (srRes.status === 'fulfilled') {
+        const releases = srRes.value.data || []
+        setA2lPending(releases.filter(sr => !sr.a2l_file_reference).length)
+      }
+
       setLastRefresh(new Date())
     }).catch(() => toast.error('Failed to load dashboard')).finally(() => setLoading(false))
+
+    // load labels total separately — potentially large, doesn't block main render
+    api.get('/v1/traceability/chain')
+      .then(r => {
+        const chain = r.data || []
+        let total = 0
+        let unjustified = 0
+        chain.forEach(sr => {
+          ;(sr.datasets || []).forEach(ds => {
+            ;(ds.labels || []).forEach(l => {
+              total++
+              if (l.modified && !l.change_justification) unjustified++
+            })
+          })
+        })
+        setLabelCount(total)
+        setChangesNeedJustify(unjustified)
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -306,7 +337,7 @@ export default function HerkoDashboardPage() {
 
   const pendingReviews = isReviewer ? (byState.UNDER_APPROVAL || 0) : 0
   const readyToRelease = isCfgMgr ? (byState.APPROVED || 0) : 0
-  const hasAnyActions = pendingReviews + readyToRelease > 0
+  const hasAnyActions = pendingReviews + readyToRelease + a2lPending + changesNeedJustify > 0
 
   // next steps by role
   const activeRole = user?.active_role || (userRoles[0] || '')
@@ -375,6 +406,8 @@ export default function HerkoDashboardPage() {
             <>
               <ActionRow label="Reviews awaiting" count={pendingReviews} to="/herko/datasets?lifecycle_state=UNDER_APPROVAL" navigate={navigate} />
               <ActionRow label="Datasets to release" count={readyToRelease} to="/herko/release-center" navigate={navigate} />
+              <ActionRow label="A2L to upload" count={a2lPending} to="/herko/sw-releases" navigate={navigate} />
+              <ActionRow label="Changes to justify" count={changesNeedJustify} to="/herko/labels" navigate={navigate} />
             </>
           )}
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #F0F0F0' }}>
@@ -403,6 +436,7 @@ export default function HerkoDashboardPage() {
               {[
                 { label: 'Total datasets', value: totalDatasets },
                 { label: 'Released', value: (byState.RELEASED || 0) + (byState.RELEASE_CANDIDATE || 0) },
+                { label: 'Labels total', value: labelCount !== null ? labelCount : '…' },
                 { label: 'Vehicle SW IDs', value: stats?.vehicle_sw_ids ?? '—' },
                 { label: 'SW Releases', value: stats?.software_releases_total ?? '—' },
                 { label: 'SW Releases valid', value: stats?.software_releases_valid ?? '—' },
