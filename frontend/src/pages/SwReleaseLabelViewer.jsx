@@ -1124,9 +1124,9 @@ export default function SwReleaseLabelViewer() {
             </div>
             <p className="text-[10px] text-gray-400 truncate">
               {swReleaseInfo?.supplier ? `${swReleaseInfo.supplier} · ` : ""}
-              A2L: {swReleaseInfo?.a2l_path ? "loaded" : "not uploaded"}
+              A2L: {swReleaseInfo?.a2l_filename ? "loaded" : "not uploaded"}
               {" · "}
-              DCM: {swReleaseInfo?.dcm_path ? "loaded" : "not uploaded"}
+              DCM: {swReleaseInfo?.dcm_filename ? "loaded" : "not uploaded"}
             </p>
           </div>
         </div>
@@ -1159,11 +1159,11 @@ export default function SwReleaseLabelViewer() {
           onChange={e => uploadDCM(e.target.files?.[0])} />
         <button onClick={() => a2lUploadRef.current?.click()} disabled={uploadingA2l}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors">
-          {uploadingA2l ? "Uploading..." : (swReleaseInfo?.a2l_path ? "Replace A2L" : "Upload A2L")}
+          {uploadingA2l ? "Uploading..." : (swReleaseInfo?.a2l_filename ? "Replace A2L" : "Upload A2L")}
         </button>
         <button onClick={() => dcmUploadRef.current?.click()} disabled={uploadingDcm}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors">
-          {uploadingDcm ? "Uploading..." : (swReleaseInfo?.dcm_path ? "Replace DCM" : "Upload DCM")}
+          {uploadingDcm ? "Uploading..." : (swReleaseInfo?.dcm_filename ? "Replace DCM" : "Upload DCM")}
         </button>
         <button onClick={() => navigate(`/software-releases/${id}/merge`)}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
