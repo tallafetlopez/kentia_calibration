@@ -9,7 +9,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import SoftwareReleasesPage from "./pages/SoftwareReleasesPage";
-import SwReleaseDetailPage from "./pages/SwReleaseDetailPage";
+import SwReleaseRedirect from "./pages/SwReleaseRedirect";
 import DatasetsPage from "./pages/DatasetsPage";
 import DatasetDetailPage from "./pages/DatasetDetailPage";
 import ReviewCenterPage from "./pages/ReviewCenterPage";
@@ -64,7 +64,7 @@ function AppContent() {
             path="/software-releases/:id"
             element={
               <ProtectedRoute>
-                <SwReleaseDetailPage />
+                <SwReleaseRedirect />
               </ProtectedRoute>
             }
           />

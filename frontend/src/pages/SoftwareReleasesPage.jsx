@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { toast } from "sonner";
 import { fmtDateShort } from "../lib/constants";
@@ -27,6 +27,7 @@ function StatusPill({ status }) {
 
 export default function SoftwareReleasesPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [ecus, setEcus] = useState([]);
   const [q, setQ] = useState("");
@@ -39,10 +40,12 @@ export default function SoftwareReleasesPage() {
     version: "",
     description: "",
     supplier: "",
-    a2l_file_reference: "",
-    dbc_reference: "",
-    dtc_list_reference: "",
   });
+
+  const a2lInputRef = useRef(null);
+  const dcmInputRef = useRef(null);
+  const [a2lFile, setA2lFile] = useState(null);
+  const [dcmFile, setDcmFile] = useState(null);
 
   const load = useCallback(async () => {
     const params = {};
@@ -58,13 +61,53 @@ export default function SoftwareReleasesPage() {
 
   const create = async () => {
     try {
-      await api.post("/software-releases", form);
-      toast.success("Software release created");
+      // 1) Create legacy release
+      const { data: created } = await api.post("/software-releases", form);
+
+      // 2) Resolve or create v1 release
+      const { data: v1List } = await api.get("/v1/sw-releases");
+      let v1 = (v1List || []).find(r =>
+        r.identifier === form.software_release_identifier && r.version === form.version
+      );
+      if (!v1) {
+        const { data } = await api.post("/v1/sw-releases", {
+          identifier: form.software_release_identifier,
+          version: form.version,
+          supplier: form.supplier,
+          description: form.description,
+          ecu_id: form.ecu_id,
+        });
+        v1 = data;
+      }
+      const v1Id = v1._id || v1.id;
+
+      // 3) Upload A2L if provided
+      if (a2lFile) {
+        const fd = new FormData();
+        fd.append("file", a2lFile);
+        await api.post(`/v1/sw-releases/${v1Id}/a2l/upload`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+      // 4) Upload DCM if provided
+      if (dcmFile) {
+        const fd = new FormData();
+        fd.append("file", dcmFile);
+        await api.post(`/v1/sw-releases/${v1Id}/dcm/upload`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+
       setOpen(false);
-      setForm({ ...form, software_release_identifier: "", version: "", description: "", supplier: "", a2l_file_reference: "", dbc_reference: "", dtc_list_reference: "" });
-      load();
+      setA2lFile(null);
+      setDcmFile(null);
+      setForm({ ...form, software_release_identifier: "", version: "", description: "", supplier: "" });
+      await load();
+
+      // 5) Navigate directly to Label Viewer
+      navigate(`/software-releases/${v1Id}/labels`);
     } catch (e) {
-      toast.error(formatApiErrorDetail(e.response?.data?.detail));
+      toast.error(formatApiErrorDetail(e) || "Failed to create release");
     }
   };
 
@@ -76,7 +119,7 @@ export default function SoftwareReleasesPage() {
         <div>
           <div className="tiny-label">Workflow 1</div>
           <h1 style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 2px", color: "#212121" }}>Software Releases</h1>
-          <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Register ECU software releases and link A2L / DBC / DTC artefacts.</p>
+          <p style={{ fontSize: 12, color: "#605E5C", margin: 0 }}>Register ECU software releases and upload A2L / DCM files.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -114,17 +157,56 @@ export default function SoftwareReleasesPage() {
                 <Label className="tiny-label">Description</Label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1.5" />
               </div>
-              <div>
-                <Label className="tiny-label">A2L reference</Label>
-                <Input value={form.a2l_file_reference} onChange={(e) => setForm({ ...form, a2l_file_reference: e.target.value })} className="mt-1.5" placeholder="ECM_SW_XXX.a2l" data-testid="new-release-a2l" />
-              </div>
-              <div>
-                <Label className="tiny-label">DBC reference</Label>
-                <Input value={form.dbc_reference} onChange={(e) => setForm({ ...form, dbc_reference: e.target.value })} className="mt-1.5" />
-              </div>
-              <div className="col-span-2">
-                <Label className="tiny-label">DTC list reference</Label>
-                <Input value={form.dtc_list_reference} onChange={(e) => setForm({ ...form, dtc_list_reference: e.target.value })} className="mt-1.5" />
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="tiny-label">A2L file</Label>
+                  <input
+                    ref={a2lInputRef}
+                    type="file"
+                    accept=".a2l,.A2L"
+                    style={{ display: "none" }}
+                    onChange={e => setA2lFile(e.target.files?.[0] || null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => a2lInputRef.current?.click()}
+                    className="ms-btn"
+                    style={{ width: "100%", justifyContent: "flex-start", marginTop: 6 }}
+                    data-testid="new-release-a2l"
+                  >
+                    {a2lFile ? a2lFile.name : "Select A2L file..."}
+                  </button>
+                  {a2lFile && (
+                    <button type="button" onClick={() => setA2lFile(null)}
+                      className="text-[11px] text-red-600 hover:underline mt-1">
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <Label className="tiny-label">DCM file</Label>
+                  <input
+                    ref={dcmInputRef}
+                    type="file"
+                    accept=".dcm,.DCM"
+                    style={{ display: "none" }}
+                    onChange={e => setDcmFile(e.target.files?.[0] || null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => dcmInputRef.current?.click()}
+                    className="ms-btn"
+                    style={{ width: "100%", justifyContent: "flex-start", marginTop: 6 }}
+                  >
+                    {dcmFile ? dcmFile.name : "Select DCM file..."}
+                  </button>
+                  {dcmFile && (
+                    <button type="button" onClick={() => setDcmFile(null)}
+                      className="text-[11px] text-red-600 hover:underline mt-1">
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -185,12 +267,18 @@ export default function SoftwareReleasesPage() {
                 <td>
                   {r.a2l_file_reference
                     ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontFamily: "monospace", fontSize: 11 }}><FileCode2 size={12} /> {r.a2l_file_reference}</span>
-                    : <span style={{ fontSize: 10, color: "#7A5C00" }}>missing</span>}
+                    : <span style={{ fontSize: 10, color: "#7A5C00" }}>not uploaded</span>}
                 </td>
                 <td style={{ fontFamily: "monospace", fontSize: 11, color: "#605E5C" }}>{fmtDateShort(r.release_date)}</td>
                 <td><StatusPill status={r.status} /></td>
                 <td style={{ textAlign: "right" }}>
-                  <Link to={`/software-releases/${r.id}`} style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }} data-testid={`sr-open-${r.software_release_identifier}`}>Open →</Link>
+                  <Link
+                    to={`/software-releases/${r.id}`}
+                    style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }}
+                    data-testid={`sr-open-${r.software_release_identifier}`}
+                  >
+                    Open
+                  </Link>
                 </td>
               </tr>
             ))}

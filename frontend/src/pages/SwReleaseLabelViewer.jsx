@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { toast } from "sonner";
@@ -463,9 +463,9 @@ function InfoTab({ label, onSaveMeta }) {
     ["Upper Limit",      label.upper_limit      ?? "—"],
     ["Address",          label.address          || "—"],
     ["Function",         label.function         || "—"],
-    ["In A2L",           label.in_a2l  ? "✓ Yes" : "✗ No"],
-    ["In DCM",           label.in_dcm  ? "✓ Yes" : "✗ No"],
-    ["Out of Range",     label.out_of_range ? "⚠ YES" : "No"],
+    ["In A2L",           label.in_a2l  ? "Yes" : "No"],
+    ["In DCM",           label.in_dcm  ? "Yes" : "No"],
+    ["Out of Range",     label.out_of_range ? "YES" : "No"],
     ["System Status",    label.system_status    || "—"],
     ["Maturity Score",   `${label.maturity_score || 0} / 100`],
     ["Last Modified",    label.last_modified ? new Date(label.last_modified).toLocaleString() : "—"],
@@ -541,8 +541,141 @@ function InfoTab({ label, onSaveMeta }) {
   );
 }
 
+// ─── Compare helpers ──────────────────────────────────────────────────────────
+function computeDelta(oldV, newV) {
+  const o = parseFloat(oldV);
+  const n = parseFloat(newV);
+  if (!isFinite(o) || !isFinite(n)) return null;
+  const delta = n - o;
+  if (delta === 0) return null;
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta.toFixed(5).replace(/\.?0+$/, "")}`;
+}
+
+// ─── Compare tab ──────────────────────────────────────────────────────────────
+function CompareTab({ label, baseValue, baseSrId }) {
+  const [baseDetail, setBaseDetail] = useState(null);
+  const [loading,    setLoading]    = useState(false);
+
+  useEffect(() => {
+    if (!baseSrId || !label?.name) return;
+    setLoading(true);
+    api.get(`/v1/sw-releases/${baseSrId}/labels/${encodeURIComponent(label.name)}`)
+      .then(r => setBaseDetail(r.data))
+      .catch(() => setBaseDetail(null))
+      .finally(() => setLoading(false));
+  }, [baseSrId, label?.name]);
+
+  if (loading) return <div className="p-4 text-xs text-gray-400">Loading base release data...</div>;
+  if (!baseDetail) return <div className="p-4 text-xs text-gray-400">Not available in base release</div>;
+
+  const type = label?.type || label?._type;
+
+  if (type === "scalar") {
+    const curr = parseFloat(label.value);
+    const base = parseFloat(baseDetail.value);
+    const delta = (isFinite(curr) && isFinite(base)) ? curr - base : null;
+    return (
+      <div className="p-3 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="border border-gray-200 rounded p-3">
+            <p className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Base release</p>
+            <p className="text-base font-mono text-gray-800">{baseDetail.value ?? "—"} {label.unit}</p>
+          </div>
+          <div className="border border-blue-300 rounded p-3 bg-blue-50">
+            <p className="text-[10px] text-blue-700 uppercase font-semibold mb-1">Current release</p>
+            <p className="text-base font-mono text-blue-900">{label.value ?? "—"} {label.unit}</p>
+          </div>
+        </div>
+        {delta !== null && (
+          <div className="text-center">
+            <p className="text-[10px] text-gray-500 uppercase font-semibold">Delta</p>
+            <p className={`text-sm font-mono font-semibold ${delta > 0 ? "text-emerald-700" : delta < 0 ? "text-red-700" : "text-gray-500"}`}>
+              {delta > 0 ? "+" : ""}{delta.toFixed(5).replace(/\.?0+$/, "")} {label.unit}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (type === "curve") {
+    const xCurr = label.x_axis || [];
+    const yCurr = Array.isArray(label.values) ? (Array.isArray(label.values[0]) ? label.values[0] : label.values) : [];
+    const yBase = Array.isArray(baseDetail.values) ? (Array.isArray(baseDetail.values[0]) ? baseDetail.values[0] : baseDetail.values) : [];
+    const allY  = [...yCurr, ...yBase].filter(v => isFinite(v));
+    if (allY.length === 0) return <div className="p-3 text-xs text-gray-400">No plottable data</div>;
+    const yMin = Math.min(...allY), yMax = Math.max(...allY);
+    const W = 540, H = 280, pL = 50, pR = 20, pT = 14, pB = 36;
+    const plotW = W - pL - pR, plotH = H - pT - pB;
+    const xS = i => pL + (xCurr.length > 1 ? (i / (xCurr.length - 1)) * plotW : plotW / 2);
+    const yS = v => pT + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
+    const pathCurr = yCurr.map((v, i) => `${i === 0 ? "M" : "L"}${xS(i)},${yS(v)}`).join(" ");
+    const pathBase = yBase.map((v, i) => `${i === 0 ? "M" : "L"}${xS(i)},${yS(v)}`).join(" ");
+    return (
+      <div className="p-3">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full border border-gray-200 rounded bg-white" style={{height:240}}>
+          <rect x={pL} y={pT} width={plotW} height={plotH} fill="#fafafa" stroke="#d1d5db"/>
+          <path d={pathBase} fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeDasharray="4 2"/>
+          <path d={pathCurr} fill="none" stroke="#2563eb" strokeWidth="2"/>
+          <text x={pL + plotW / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="#6b7280">{label.unit_x || "X"}</text>
+          <text x={14} y={pT + plotH / 2} textAnchor="middle" fontSize="10" fill="#6b7280"
+            transform={`rotate(-90 14 ${pT + plotH / 2})`}>{label.unit_w || label.unit || "Y"}</text>
+        </svg>
+        <div className="flex gap-4 mt-2 text-[11px]">
+          <span className="flex items-center gap-1">
+            <span style={{width:14, height:0, borderTop:"2px dashed #9ca3af", display:"inline-block"}}/>
+            Base release
+          </span>
+          <span className="flex items-center gap-1">
+            <span style={{width:14, height:2, background:"#2563eb", display:"inline-block"}}/>
+            Current release
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === "map") {
+    return (
+      <div className="p-3 text-xs text-gray-600">
+        <p className="mb-2 font-semibold">Map comparison:</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="border border-gray-200 rounded p-2">
+            <p className="text-[10px] font-semibold text-gray-500 mb-1">BASE</p>
+            <p className="font-mono text-[10px]">
+              Dimensions: {Array.isArray(baseDetail.values) ? `${baseDetail.values.length}x${baseDetail.values[0]?.length || 0}` : "—"}
+            </p>
+            <p className="font-mono text-[10px]">
+              Range: {(() => {
+                const flat = (baseDetail.values || []).flat().filter(isFinite);
+                return flat.length ? `${Math.min(...flat).toFixed(3)} to ${Math.max(...flat).toFixed(3)}` : "—";
+              })()}
+            </p>
+          </div>
+          <div className="border border-blue-300 rounded p-2 bg-blue-50">
+            <p className="text-[10px] font-semibold text-blue-700 mb-1">CURRENT</p>
+            <p className="font-mono text-[10px]">
+              Dimensions: {Array.isArray(label.values) ? `${label.values.length}x${label.values[0]?.length || 0}` : "—"}
+            </p>
+            <p className="font-mono text-[10px]">
+              Range: {(() => {
+                const flat = (label.values || []).flat().filter(isFinite);
+                return flat.length ? `${Math.min(...flat).toFixed(3)} to ${Math.max(...flat).toFixed(3)}` : "—";
+              })()}
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 text-[10px] text-gray-400 italic">Full delta heatmap in next iteration.</p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ─── Chart panel (tabbed) ─────────────────────────────────────────────────────
-function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity }) {
+function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity, compareActive, baseValue, baseSrId }) {
   const [tab, setTab] = useState("chart");
   useEffect(() => { setTab("chart"); }, [param?.name]);
   if (!param && !loading) return null;
@@ -550,6 +683,7 @@ function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity }) {
   const TABS = [
     { id: "chart",    label: "Chart"    },
     { id: "data",     label: "Data"     },
+    ...(compareActive ? [{ id: "compare", label: "Compare" }] : []),
     { id: "maturity", label: "Maturity" },
     { id: "info",     label: "Info"     },
   ];
@@ -610,6 +744,7 @@ function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity }) {
                              <ScalarGauge label={param} />
         )}
         {!loading && param && tab === "data"     && <DataTab label={param} />}
+        {!loading && param && tab === "compare"  && <CompareTab label={param} baseValue={baseValue} baseSrId={baseSrId} />}
         {!loading && param && tab === "maturity" && <MaturityTab label={param} onSaveMaturity={onSaveMaturity} />}
         {!loading && param && tab === "info"     && <InfoTab label={param} onSaveMeta={onSaveMeta} />}
       </div>
@@ -642,10 +777,11 @@ function SortHeader({ col, label, sortCol, sortDir, onSort, className = "" }) {
   return (
     <th
       onClick={() => onSort(col)}
-      className={`px-2 py-1.5 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 cursor-pointer select-none hover:bg-gray-200 whitespace-nowrap ${className}`}
+      className={`px-2 py-1.5 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 cursor-pointer select-none hover:bg-gray-200 ${className}`}
+      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
     >
       {label}
-      {active && <span className="ml-0.5 text-gray-400">{sortDir === "asc" ? "↑" : "↓"}</span>}
+      {active && <span className="ml-0.5 text-gray-400">{sortDir === "asc" ? "▲" : "▼"}</span>}
     </th>
   );
 }
@@ -703,6 +839,20 @@ export default function SwReleaseLabelViewer() {
 
   // Missing DCM default assignment modal
   const [showDefaultAssignModal, setShowDefaultAssignModal] = useState(false);
+
+  // SW Release info + upload
+  const [swReleaseInfo,  setSwReleaseInfo]  = useState(null);
+  const [uploadingA2l,   setUploadingA2l]   = useState(false);
+  const [uploadingDcm,   setUploadingDcm]   = useState(false);
+  const a2lUploadRef = useRef(null);
+  const dcmUploadRef = useRef(null);
+
+  // ── Fetch SW Release info ─────────────────────────────────────────────────────
+  useEffect(() => {
+    api.get(`/v1/sw-releases/${id}`)
+      .then(r => setSwReleaseInfo(r.data))
+      .catch(() => {});
+  }, [id, reloadKey]);
 
   // ── Fetch SW Releases for compare dropdown ───────────────────────────────────
   useEffect(() => {
@@ -887,6 +1037,47 @@ export default function SwReleaseLabelViewer() {
     }
   };
 
+  // ── Upload handlers ──────────────────────────────────────────────────────────
+  const uploadA2L = async (file) => {
+    if (!file) return;
+    setUploadingA2l(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post(`/v1/sw-releases/${id}/a2l/upload`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("A2L uploaded");
+      setReloadKey(k => k + 1);
+      const r = await api.get(`/v1/sw-releases/${id}`);
+      setSwReleaseInfo(r.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "A2L upload failed");
+    } finally {
+      setUploadingA2l(false);
+    }
+  };
+
+  const uploadDCM = async (file) => {
+    if (!file) return;
+    setUploadingDcm(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post(`/v1/sw-releases/${id}/dcm/upload`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("DCM uploaded");
+      setReloadKey(k => k + 1);
+      const r = await api.get(`/v1/sw-releases/${id}`);
+      setSwReleaseInfo(r.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "DCM upload failed");
+    } finally {
+      setUploadingDcm(false);
+    }
+  };
+
   // ── Loading / error ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -903,7 +1094,7 @@ export default function SwReleaseLabelViewer() {
           <p className="font-semibold text-sm text-red-800 mb-1">Error loading labels</p>
           <p className="text-xs text-red-700">{error}</p>
         </div>
-        <button onClick={() => navigate(-1)} className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded text-xs">← Back</button>
+        <button onClick={() => navigate(-1)} className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded text-xs">Back</button>
       </div>
     );
   }
@@ -913,15 +1104,32 @@ export default function SwReleaseLabelViewer() {
     <div className="flex flex-col" style={{ height: "calc(100vh - 130px)" }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-200 bg-white shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <button onClick={() => navigate(-1)} className="text-xs text-gray-500 hover:text-gray-800 shrink-0">← Back</button>
+      <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-gray-200 bg-white shrink-0">
+        <div className="flex items-start gap-3 min-w-0">
+          <button onClick={() => navigate("/software-releases")}
+            className="text-xs text-gray-500 hover:text-gray-800 shrink-0 mt-0.5">
+            Back
+          </button>
           <div className="min-w-0">
-            <h1 className="text-sm font-bold text-gray-900 leading-tight">Label Viewer</h1>
-            <p className="text-[10px] text-gray-400 truncate">A2L + DCM merged · SW Release {id}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-sm font-bold text-gray-900 leading-tight">
+                {swReleaseInfo?.identifier || swReleaseInfo?.version || "Release"}
+                {swReleaseInfo?.version ? ` · v${swReleaseInfo.version}` : ""}
+              </h1>
+              {swReleaseInfo?.status && (
+                <span className="text-[10px] px-1.5 py-px rounded bg-gray-100 text-gray-700 font-semibold">
+                  {swReleaseInfo.status}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-gray-400 truncate">
+              {swReleaseInfo?.supplier ? `${swReleaseInfo.supplier} · ` : ""}
+              A2L: {swReleaseInfo?.a2l_path ? "loaded" : "not uploaded"}
+              {" · "}
+              DCM: {swReleaseInfo?.dcm_path ? "loaded" : "not uploaded"}
+            </p>
           </div>
         </div>
-        {/* Search */}
         <input
           value={search}
           onChange={e => { setSearch(e.target.value); }}
@@ -934,15 +1142,32 @@ export default function SwReleaseLabelViewer() {
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-white shrink-0 flex-wrap">
         <button onClick={exportCSV}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
-          ↓ Export CSV
+          Export CSV
         </button>
         <button onClick={() => setShowExportDcmModal(true)}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-          ↓ Export DCM
+          Export DCM
         </button>
         <button onClick={() => { setReloadKey(k => k + 1); setSelectedParam(null); }}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
-          ↺ Reload
+          Reload
+        </button>
+        <div className="w-px h-4 bg-gray-200"/>
+        <input ref={a2lUploadRef} type="file" accept=".a2l,.A2L" style={{display:"none"}}
+          onChange={e => uploadA2L(e.target.files?.[0])} />
+        <input ref={dcmUploadRef} type="file" accept=".dcm,.DCM" style={{display:"none"}}
+          onChange={e => uploadDCM(e.target.files?.[0])} />
+        <button onClick={() => a2lUploadRef.current?.click()} disabled={uploadingA2l}
+          className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors">
+          {uploadingA2l ? "Uploading..." : (swReleaseInfo?.a2l_path ? "Replace A2L" : "Upload A2L")}
+        </button>
+        <button onClick={() => dcmUploadRef.current?.click()} disabled={uploadingDcm}
+          className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors">
+          {uploadingDcm ? "Uploading..." : (swReleaseInfo?.dcm_path ? "Replace DCM" : "Upload DCM")}
+        </button>
+        <button onClick={() => navigate(`/software-releases/${id}/merge`)}
+          className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
+          Merge
         </button>
         <div className="w-px h-4 bg-gray-200"/>
         <span className="text-[10px] text-gray-500 font-semibold shrink-0">Compare with:</span>
@@ -968,7 +1193,7 @@ export default function SwReleaseLabelViewer() {
             <span className="text-[10px] text-emerald-600 font-medium">
               {Object.keys(baseLabels).length} base labels
             </span>
-            <button onClick={clearCompare} className="text-[10px] text-red-400 hover:text-red-600">✕</button>
+            <button onClick={clearCompare} className="text-[10px] text-red-400 hover:text-red-600">Clear</button>
           </>
         )}
       </div>
@@ -980,9 +1205,9 @@ export default function SwReleaseLabelViewer() {
           <span>Scalars: <b className="text-gray-700">{(summary.by_type?.scalar??0).toLocaleString()}</b></span>
           <span>Curves: <b className="text-gray-700">{summary.by_type?.curve??0}</b></span>
           <span>Maps: <b className="text-gray-700">{summary.by_type?.map??0}</b></span>
-          {summary.out_of_range > 0 && <span className="text-amber-600 font-medium">⚠ {summary.out_of_range} out of range</span>}
-          {summary.missing_a2l  > 0 && <span className="text-orange-600">○ {summary.missing_a2l} no A2L</span>}
-          {summary.missing_dcm  > 0 && <span className="text-blue-600">○ {summary.missing_dcm} no DCM</span>}
+          {summary.out_of_range > 0 && <span className="text-amber-600 font-medium">{summary.out_of_range} out of range</span>}
+          {summary.missing_a2l  > 0 && <span className="text-orange-600">{summary.missing_a2l} no A2L</span>}
+          {summary.missing_dcm  > 0 && <span className="text-blue-600">{summary.missing_dcm} no DCM</span>}
           {filtered.length < allLabels.length && (
             <span className="ml-auto text-blue-600 font-medium">Filtered: {filtered.length.toLocaleString()}</span>
           )}
@@ -993,7 +1218,7 @@ export default function SwReleaseLabelViewer() {
       {quickFilter === "missing_dcm" && filtered.length > 0 && (
         <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 flex items-center justify-between text-xs shrink-0">
           <span className="text-amber-800">
-            ⚠ {filtered.length} labels in A2L but missing DCM value.
+            {filtered.length} labels in A2L but missing DCM value.
           </span>
           <button onClick={() => setShowDefaultAssignModal(true)}
             className="text-[11px] px-2.5 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700">
@@ -1031,17 +1256,17 @@ export default function SwReleaseLabelViewer() {
         {/* Clear */}
         {(filterType||filterFunction||filterStatus||search) &&
           <button onClick={()=>{setFilterType("");setFilterFunction("");setFilterStatus("");setSearch("");}}
-            className="text-[10px] text-red-500 hover:text-red-700 ml-1">✕ Clear</button>
+            className="text-[10px] text-red-500 hover:text-red-700 ml-1">Clear</button>
         }
         <div className="w-px h-4 bg-gray-200 mx-1"/>
         {/* Quick filters */}
         {[
           { id: "",             label: "All"        },
-          { id: "out_of_range", label: "⚠ OOR"      },
-          { id: "missing_dcm",  label: "○ No DCM"   },
-          { id: "missing_a2l",  label: "○ No A2L"   },
-          { id: "saved",        label: "🔒 Saved"    },
-          ...(compareId ? [{ id: "changed", label: "Δ Changed" }] : []),
+          { id: "out_of_range", label: "OOR"         },
+          { id: "missing_dcm",  label: "No DCM"      },
+          { id: "missing_a2l",  label: "No A2L"      },
+          { id: "saved",        label: "Saved"        },
+          ...(compareId ? [{ id: "changed", label: "Changed" }] : []),
         ].map(q => (
           <button key={q.id} onClick={() => setQuickFilter(q.id)}
             className={`text-[10px] px-2 py-0.5 rounded border font-semibold transition-colors whitespace-nowrap ${
@@ -1061,37 +1286,37 @@ export default function SwReleaseLabelViewer() {
         <div className="flex-1 overflow-y-auto min-w-0">
           <table className="w-full border-collapse" style={{ tableLayout: "fixed", fontSize: 10.5 }}>
             <colgroup>
-              <col style={{width:24}}/>   {/* Typ */}
-              <col style={{width:185}}/>  {/* Name */}
-              <col style={{width:30}}/>   {/* Save */}
-              <col style={{width:74}}/>   {/* System Status */}
-              <col style={{width:36}}/>   {/* Scor */}
-              <col style={{width:95}}/>   {/* Value or Dim */}
-              <col style={{width:95}}/>   {/* Value or Dim Old */}
-              <col style={{width:50}}/>   {/* Label Flags */}
-              <col style={{width:60}}/>   {/* Owner */}
-              <col style={{width:60}}/>   {/* Deputy */}
-              <col style={{width:78}}/>   {/* Function */}
-              <col style={{width:52}}/>   {/* Fn Ver */}
-              <col style={{width:72}}/>   {/* User Status */}
+              <col style={{width:28}}/>   {/* Typ */}
+              <col style={{width:200}}/>  {/* Name */}
+              <col style={{width:34}}/>   {/* Save */}
+              <col style={{width:90}}/>   {/* Status */}
+              <col style={{width:54}}/>   {/* Scor */}
+              <col style={{width:108}}/> {/* Value or Dim */}
+              <col style={{width:108}}/> {/* Value or Dim Old */}
+              <col style={{width:64}}/>   {/* Flags */}
+              <col style={{width:72}}/>   {/* Owner */}
+              <col style={{width:72}}/>   {/* Deputy */}
+              <col style={{width:90}}/>   {/* Function */}
+              <col style={{width:60}}/>   {/* Fn Ver */}
+              <col style={{width:84}}/>   {/* User Status */}
               <col/>                       {/* Comment */}
             </colgroup>
             <thead className="sticky top-0 z-10 bg-gray-100 border-b-2 border-gray-300">
               <tr>
-                <th className="px-1 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 select-none">Typ</th>
+                <th className="px-1 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 select-none" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Typ</th>
                 <SortHeader col="name"           label="Name"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
-                <th className="px-1 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 select-none">Save</th>
-                <SortHeader col="system_status"  label="System Status"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
+                <th className="px-1 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 select-none" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Save</th>
+                <SortHeader col="system_status"  label="Status"         sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
                 <SortHeader col="maturity_score" label="Scor"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
                 <SortHeader col="value_preview"  label="Value or Dim"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
-                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-500 border-r border-gray-200 select-none">Value Old</th>
-                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-600 border-r border-gray-200 select-none">Flags</th>
+                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-500 border-r border-gray-200 select-none" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Value Old</th>
+                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-600 border-r border-gray-200 select-none" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Flags</th>
                 <SortHeader col="owner"          label="Owner"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
                 <SortHeader col="deputy"         label="Deputy"         sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
                 <SortHeader col="function"       label="Function"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
-                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-500 border-r border-gray-200 select-none">Fn Ver</th>
+                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-500 border-r border-gray-200 select-none" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Fn Ver</th>
                 <SortHeader col="user_status"    label="User Status"    sortCol={sortCol} sortDir={sortDir} onSort={handleSort}/>
-                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-600 select-none">Comment</th>
+                <th className="px-2 py-1.5 text-left text-[10px] font-bold text-gray-600 select-none" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Comment</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1119,14 +1344,17 @@ export default function SwReleaseLabelViewer() {
                         {l.name}
                       </span>
                     </td>
-                    {/* Save (lock toggle) */}
+                    {/* Save (checkbox toggle) */}
                     <td className="px-1 py-0 text-center border-r border-gray-100"
                       onClick={e => { e.stopPropagation(); toggleSave(l); }}>
-                      <span className={`text-[11px] cursor-pointer select-none transition-colors ${
-                        l.save ? "text-green-600 hover:text-green-800" : "text-gray-300 hover:text-gray-500"
-                      }`} title={l.save ? "Locked — click to unlock" : "Click to lock"}>
-                        {l.save ? "🔒" : "○"}
-                      </span>
+                      <input
+                        type="checkbox"
+                        checked={!!l.save}
+                        onChange={e => { e.stopPropagation(); toggleSave(l); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ cursor: "pointer", width: 12, height: 12 }}
+                        title={l.save ? "Saved — click to unsave" : "Click to save"}
+                      />
                     </td>
                     {/* System Status */}
                     <td className="px-1.5 py-0 border-r border-gray-100">
@@ -1147,14 +1375,19 @@ export default function SwReleaseLabelViewer() {
                     </td>
                     {/* Value or Dim Old (compare) */}
                     <td className="px-2 py-0 border-r border-gray-100 font-mono truncate">
-                      {baseLabels[l.name] !== undefined
-                        ? <span className={baseLabels[l.name] !== l.value_preview
-                            ? "text-amber-600 font-semibold"
-                            : "text-gray-400"}>
+                      {baseLabels[l.name] !== undefined ? (
+                        <div className="flex items-baseline gap-1">
+                          <span className={baseLabels[l.name] !== l.value_preview ? "text-amber-700" : "text-gray-400"}>
                             {baseLabels[l.name] ?? "—"}
                           </span>
-                        : <span className="text-gray-300">—</span>
-                      }
+                          {baseLabels[l.name] !== l.value_preview && (() => {
+                            const d = computeDelta(baseLabels[l.name], l.value_preview);
+                            return d ? <span className="text-[10px] text-amber-600">({d})</span> : null;
+                          })()}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
                     </td>
                     {/* Label Flags */}
                     <td className="px-1 py-0 border-r border-gray-100 text-[9px] text-gray-500 truncate">
@@ -1191,10 +1424,10 @@ export default function SwReleaseLabelViewer() {
               <span>{page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE, filtered.length)} / {filtered.length.toLocaleString()}</span>
               <div className="flex gap-1">
                 <button disabled={page===0} onClick={()=>setPage(p=>p-1)}
-                  className="px-2 py-0.5 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-100">← Prev</button>
+                  className="px-2 py-0.5 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-100">Prev</button>
                 <span className="px-2 py-0.5 text-gray-400">Page {page+1}/{totalPages}</span>
                 <button disabled={page+1>=totalPages} onClick={()=>setPage(p=>p+1)}
-                  className="px-2 py-0.5 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-100">Next →</button>
+                  className="px-2 py-0.5 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-100">Next</button>
               </div>
             </div>
           )}
@@ -1207,6 +1440,9 @@ export default function SwReleaseLabelViewer() {
           onClose={() => { setSelectedParam(null); setChartLoading(false); }}
           onSaveMeta={saveMeta}
           onSaveMaturity={saveMaturity}
+          compareActive={!!compareId}
+          baseValue={selectedParam ? baseLabels[selectedParam.name] : undefined}
+          baseSrId={compareId || undefined}
         />
       </div>
 
@@ -1221,7 +1457,7 @@ export default function SwReleaseLabelViewer() {
             <label className="block text-[11px] font-semibold text-gray-600 mb-1">Scope</label>
             <div className="flex flex-col gap-1 mb-3">
               {[
-                { v: "saved",    label: `Only saved labels (🔒 ${allLabels.filter(l=>l.save).length})` },
+                { v: "saved",    label: `Only saved labels (${allLabels.filter(l=>l.save).length})` },
                 { v: "filtered", label: `Current filtered view (${filtered.length})` },
                 { v: "all",      label: `All labels in release (${allLabels.length})` },
               ].map(o => (
