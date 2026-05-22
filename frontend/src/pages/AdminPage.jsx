@@ -10,6 +10,10 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [audit, setAudit] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [editingRoles, setEditingRoles] = useState({}); // { userId: Set<role> }
+  const [savingRoles, setSavingRoles] = useState({});   // { userId: bool }
+
+  const isAdmin = (user?.roles || []).includes("DM_Administrator");
 
   const load = async () => {
     const u = await api.get("/auth/users");
@@ -18,6 +22,38 @@ export default function AdminPage() {
     setAudit(a.data);
   };
   useEffect(() => { load(); }, []);
+
+  const startEditRoles = (u) => {
+    setEditingRoles(prev => ({ ...prev, [u.id]: new Set(u.roles) }));
+  };
+
+  const cancelEditRoles = (userId) => {
+    setEditingRoles(prev => { const n = {...prev}; delete n[userId]; return n; });
+  };
+
+  const toggleRole = (userId, role) => {
+    setEditingRoles(prev => {
+      const s = new Set(prev[userId]);
+      s.has(role) ? s.delete(role) : s.add(role);
+      return { ...prev, [userId]: s };
+    });
+  };
+
+  const saveRoles = async (userId) => {
+    const roles = Array.from(editingRoles[userId] || []);
+    if (!roles.length) { toast.error("User must have at least one role"); return; }
+    setSavingRoles(prev => ({ ...prev, [userId]: true }));
+    try {
+      await api.patch(`/auth/users/${userId}/roles`, { roles });
+      toast.success("Roles updated");
+      cancelEditRoles(userId);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update roles");
+    } finally {
+      setSavingRoles(prev => ({ ...prev, [userId]: false }));
+    }
+  };
 
   const reseed = async () => {
     if (!window.confirm("This will wipe the database and reload demo data. Continue?")) return;
@@ -58,23 +94,73 @@ export default function AdminPage() {
               <th>Email</th>
               <th>Roles</th>
               <th>Active role</th>
+              {isAdmin && <th>Edit roles</th>}
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id} data-testid={`user-row-${u.email}`}>
-                <td style={{ fontWeight: 600 }}>{u.name}</td>
-                <td style={{ fontFamily: "monospace", fontSize: 11 }}>{u.email}</td>
-                <td>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {u.roles.map((r) => (
-                      <span key={r} style={{ fontSize: 9, fontFamily: "monospace", background: "#F3F3F3", color: "#605E5C", border: "1px solid #C8C8C8", padding: "1px 5px" }}>{r}</span>
-                    ))}
-                  </div>
-                </td>
-                <td style={{ fontFamily: "monospace", fontSize: 11 }}>{u.active_role}</td>
-              </tr>
-            ))}
+            {users.map((u) => {
+              const editing = !!editingRoles[u.id];
+              return (
+                <tr key={u.id} data-testid={`user-row-${u.email}`}>
+                  <td style={{ fontWeight: 600 }}>{u.name}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 11 }}>{u.email}</td>
+                  <td>
+                    {editing ? (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {ROLES_LIST.map(r => (
+                          <label key={r} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, fontFamily: "monospace", cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={editingRoles[u.id]?.has(r) || false}
+                              onChange={() => toggleRole(u.id, r)}
+                            />
+                            {r}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {u.roles.map((r) => (
+                          <span key={r} style={{ fontSize: 9, fontFamily: "monospace", background: "#F3F3F3", color: "#605E5C", border: "1px solid #C8C8C8", padding: "1px 5px" }}>{r}</span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ fontFamily: "monospace", fontSize: 11 }}>{u.active_role}</td>
+                  {isAdmin && (
+                    <td>
+                      {editing ? (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            className="ms-btn primary"
+                            style={{ fontSize: 10, padding: "2px 8px" }}
+                            disabled={savingRoles[u.id]}
+                            onClick={() => saveRoles(u.id)}
+                          >
+                            {savingRoles[u.id] ? "…" : "Save"}
+                          </button>
+                          <button
+                            className="ms-btn"
+                            style={{ fontSize: 10, padding: "2px 8px" }}
+                            onClick={() => cancelEditRoles(u.id)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="ms-btn"
+                          style={{ fontSize: 10, padding: "2px 8px" }}
+                          onClick={() => startEditRoles(u)}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

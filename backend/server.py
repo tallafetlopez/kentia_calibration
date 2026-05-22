@@ -184,6 +184,34 @@ async def list_users(user: dict = Depends(current_user)):
     return users
 
 
+@api.patch("/auth/users/{user_id}/roles")
+async def update_user_roles(user_id: str, body: dict, user: dict = Depends(current_user)):
+    """Admin-only: update which roles are assigned to a user."""
+    if "DM_Administrator" not in (user.get("roles") or []):
+        raise HTTPException(403, "DM_Administrator role required")
+    new_roles = body.get("roles", [])
+    if not isinstance(new_roles, list) or not new_roles:
+        raise HTTPException(400, "roles must be a non-empty list")
+    valid = [r for r in new_roles if r in ROLES]
+    if not valid:
+        raise HTTPException(400, f"No valid roles provided. Valid: {ROLES}")
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if not target:
+        raise HTTPException(404, "User not found")
+    # Ensure active_role stays valid
+    active = target.get("active_role")
+    if active not in valid:
+        active = valid[0]
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"roles": valid, "active_role": active}},
+    )
+    await log_audit("user", user_id, "ROLES_UPDATED", user["email"],
+                    previous_value=str(target.get("roles")), new_value=str(valid))
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return updated
+
+
 # =====================================================
 #                    ECUs
 # =====================================================

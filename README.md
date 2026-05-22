@@ -1,6 +1,18 @@
-# HERKO Calibration Manager
+# HERKO Calibration Manager — v1.0
 
 Herramienta de gestión de configuración ECM (ECU Calibration Management) para el ciclo de vida completo de releases de software embebido: desde la importación de ficheros A2L hasta la aprobación regulatoria, trazabilidad y asignación a vehículos.
+
+---
+
+## Novedades v1.0 — Workflow Nominal completo
+
+| Feature | Descripción |
+|---|---|
+| **Export DCM** | Botón "↓ Export DCM" en Label Viewer → descarga `.dcm` DAMOS 2.0 filtrable por scope/maturity/filename |
+| **Merge de calibraciones** | Página `/software-releases/:id/merge` — preview de conflictos + estrategia overlay\_wins/base\_wins/manual → descarga DCM fusionado |
+| **Warning Missing DCM** | Banner amarillo cuando se filtra "No DCM" + modal con lower/upper limits de A2L |
+| **Role switcher** | Dropdown en navbar HERKO para cambiar rol activo sin salir de la app |
+| **Admin: editar roles** | Tabla de usuarios en `/admin` con checkboxes para asignar/quitar roles (solo DM\_Administrator) |
 
 ---
 
