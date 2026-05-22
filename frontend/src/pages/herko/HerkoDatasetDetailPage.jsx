@@ -30,6 +30,8 @@ export default function HerkoDatasetDetailPage() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ search: '', modifiedOnly: false, regulatoryOnly: false, paramCustOnly: false })
+  const [changelog, setChangelog] = useState([])
+  const [loadingLog, setLoadingLog] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +49,15 @@ export default function HerkoDatasetDetailPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (activeTab !== 'changelog') return
+    setLoadingLog(true)
+    api.get(`/datasets/${id}/changelog`)
+      .then(r => setChangelog(r.data))
+      .catch(() => toast.error('Failed to load changelog'))
+      .finally(() => setLoadingLog(false))
+  }, [activeTab, id])
 
   // Sync selectedLabel after labels refresh
   useEffect(() => {
@@ -101,7 +112,7 @@ export default function HerkoDatasetDetailPage() {
         change_justification: labelDraft.change_justification || null,
         comments: labelDraft.comments || null,
       }
-      const res = await api.patch(`/datasets/${id}/labels/${selectedLabel.id}`, body)
+      const res = await api.patch(`/v1/datasets/${id}/labels/${selectedLabel.id}`, body)
       toast.success('Label saved')
       const updated = res.data || { ...selectedLabel, ...body }
       setSelectedLabel(updated)
@@ -120,7 +131,7 @@ export default function HerkoDatasetDetailPage() {
 
   const handleSubmitApproval = async () => {
     try {
-      await api.post(`/datasets/${id}/transition`, { new_state: 'UNDER_APPROVAL' })
+      await api.post(`/datasets/${id}/submit-approval`)
       toast.success('Submitted for approval')
       load()
     } catch (e) {
@@ -165,13 +176,21 @@ export default function HerkoDatasetDetailPage() {
     <div className="herko-page">
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, fontSize: 13 }}>
-        <button onClick={() => navigate('/datasets')}
+        <button onClick={() => navigate('/herko/datasets')}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2D5016', fontWeight: 600 }}>
           Datasets
         </button>
         <span style={{ color: '#CCCCCC' }}>›</span>
         <span style={{ color: '#3C3C3C', fontWeight: 600 }}>{dataset.dataset_name}</span>
         <StateBadge state={dataset.lifecycle_state} />
+        {dataset.lifecycle_state === 'UNDER_APPROVAL' && (
+          <button
+            onClick={() => navigate(`/herko/datasets/${id}/review`)}
+            style={{ marginLeft: 'auto', background: '#FFF4CE', border: '1px solid #F0D060', color: '#7A5C00', fontSize: 11, fontWeight: 600, padding: '3px 10px', cursor: 'pointer', borderRadius: 2 }}
+          >
+            Open Review →
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 0, alignItems: 'flex-start' }}>
@@ -264,8 +283,85 @@ export default function HerkoDatasetDetailPage() {
           )}
 
           {activeTab === 'changelog' && (
-            <div className="herko-card">
-              <p style={{ color: '#666', fontSize: 13 }}>{dataset.changelog_summary || 'No changelog available.'}</p>
+            <div className="herko-card" style={{ padding: 0 }}>
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid #E5E5E5', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="herko-btn herko-btn-secondary"
+                  style={{ fontSize: 12 }}
+                  disabled={changelog.length === 0}
+                  onClick={() => {
+                    const rows = [
+                      ['Date', 'Action', 'Entity', 'Author', 'Previous Value', 'New Value', 'Justification'],
+                      ...changelog.map(e => [
+                        e.date || '',
+                        e.action || '',
+                        e.entity_id || '',
+                        e.author || '',
+                        e.previous_value || '',
+                        e.new_value || '',
+                        (e.justification || '').replace(/"/g, '""'),
+                      ]),
+                    ]
+                    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `changelog_${dataset.dataset_name}_${new Date().toISOString().slice(0, 10)}.csv`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                >
+                  Export CSV ↓
+                </button>
+              </div>
+
+              {loadingLog ? (
+                <p style={{ padding: '20px 16px', color: '#AAAAAA', fontSize: 13 }}>Loading changelog…</p>
+              ) : changelog.length === 0 ? (
+                <p style={{ padding: '20px 16px', color: '#AAAAAA', fontSize: 13 }}>No changes recorded yet.</p>
+              ) : (
+                <div>
+                  {changelog.map((entry, i) => {
+                    const ACTION_COLORS = {
+                      LABEL_UPDATED: '#0078D4',
+                      CREATED: '#7CBA00',
+                      SUBMITTED_FOR_APPROVAL: '#FF8C00',
+                      'UNDER_APPROVAL→APPROVED': '#2D5016',
+                      APPROVED: '#2D5016',
+                      REJECTED: '#D13438',
+                      DEPRECATED: '#D13438',
+                    }
+                    const badgeColor = ACTION_COLORS[entry.action] || '#999999'
+                    const dateStr = entry.date
+                      ? new Date(entry.date).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : '—'
+                    return (
+                      <div key={entry.id || i} style={{ padding: '10px 16px', borderBottom: '1px solid #F0F0F0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', background: badgeColor + '18', color: badgeColor, border: `1px solid ${badgeColor}44` }}>
+                            {entry.action}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#3C3C3C' }}>{entry.entity_id || '—'}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#888888' }}>
+                          By: <strong style={{ color: '#555' }}>{entry.author || '—'}</strong> · {dateStr}
+                        </div>
+                        {(entry.previous_value || entry.new_value) && (
+                          <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace' }}>
+                            {entry.previous_value ?? '—'} → {entry.new_value ?? '—'}
+                          </div>
+                        )}
+                        {entry.justification && (
+                          <div style={{ fontSize: 11, color: '#666666', fontStyle: 'italic' }}>
+                            "{entry.justification}"
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

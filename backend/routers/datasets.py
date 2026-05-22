@@ -51,6 +51,17 @@ class DatasetRenameRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class ReviewDomainRequest(BaseModel):
+    domain: Literal["technical", "project_configuration", "regulatory", "vnv"]
+    status: Literal["PENDING", "ACCEPTED", "REWORK_REQUIRED"]
+    comments: Optional[str] = None
+
+
+class ApprovalDecisionRequest(BaseModel):
+    decision: Literal["APPROVED", "REJECTED"]
+    justification: str
+
+
 class LabelUpdateRequest(BaseModel):
     current_value: Optional[str] = None
     level: Optional[str] = None
@@ -401,15 +412,10 @@ async def update_label(
     user: dict = Depends(get_user),
 ):
     """Update a single label. Dataset must be in EDIT state."""
-    try:
-        ds_oid = ObjectId(dataset_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid dataset ID format")
-
-    dataset = await db.datasets.find_one({"_id": ds_oid})
+    dataset = await db.datasets.find_one({"id": dataset_id})
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    if dataset.get("state") != "EDIT":
+    if dataset.get("lifecycle_state") != "EDIT":
         raise HTTPException(status_code=400, detail="Dataset is not in EDIT state")
 
     try:
@@ -451,6 +457,106 @@ async def update_label(
 
     updated = await db.labels.find_one({"_id": lbl_oid})
     updated["id"] = str(updated.pop("_id"))
+    return updated
+
+
+@router.post("/{dataset_id}/review")
+async def update_domain_review(
+    dataset_id: str,
+    body: ReviewDomainRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Update a single domain review status. Dataset must be UNDER_APPROVAL."""
+    doc = await db.datasets.find_one({"id": dataset_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if doc.get("lifecycle_state") != "UNDER_APPROVAL":
+        raise HTTPException(status_code=400, detail="Dataset must be UNDER_APPROVAL")
+
+    now = datetime.utcnow()
+    author = user.get("username") or user.get("email")
+
+    patch = {
+        f"review.{body.domain}": body.status,
+        f"review.{body.domain}_comments": body.comments or "",
+        "last_modified_date": now.isoformat(),
+    }
+
+    if body.status == "REWORK_REQUIRED":
+        patch["lifecycle_state"] = "EDIT"
+        for k in ("technical", "project_configuration", "regulatory", "vnv"):
+            patch[f"review.{k}"] = "PENDING"
+
+    await db.datasets.update_one({"id": dataset_id}, {"$set": patch})
+
+    await db.audit_log.insert_one({
+        "entity_type": "dataset",
+        "entity_id": dataset_id,
+        "action": f"REVIEW_{body.domain.upper()}_{body.status}",
+        "author": author,
+        "date": now.isoformat(),
+        "justification": body.comments or "",
+    })
+
+    updated = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    return updated
+
+
+@router.post("/{dataset_id}/approve")
+async def approve_dataset_v1(
+    dataset_id: str,
+    body: ApprovalDecisionRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Final approval decision (APPROVED or REJECTED). Dataset must be UNDER_APPROVAL."""
+    doc = await db.datasets.find_one({"id": dataset_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if doc.get("lifecycle_state") != "UNDER_APPROVAL":
+        raise HTTPException(status_code=400, detail="Dataset must be UNDER_APPROVAL")
+
+    review = doc.get("review", {})
+    if body.decision == "APPROVED":
+        for k in ("technical", "project_configuration", "regulatory", "vnv"):
+            if review.get(k) != "ACCEPTED":
+                raise HTTPException(status_code=400, detail=f"Review '{k}' is not ACCEPTED")
+
+    now = datetime.utcnow()
+    author = user.get("username") or user.get("email")
+
+    if body.decision == "APPROVED":
+        patch = {
+            "lifecycle_state": "APPROVED",
+            "review.approval_decision": "APPROVED",
+            "review.approval_justification": body.justification,
+            "review.approval_date": now.isoformat(),
+            "review.approved_by": author,
+            "last_modified_date": now.isoformat(),
+        }
+        audit_action = "UNDER_APPROVAL→APPROVED"
+    else:
+        patch = {
+            "lifecycle_state": "EDIT",
+            "review.approval_decision": "REJECTED",
+            "review.approval_justification": body.justification,
+            "review.rejected_by": author,
+            "last_modified_date": now.isoformat(),
+        }
+        audit_action = "UNDER_APPROVAL→REJECTED→EDIT"
+
+    await db.datasets.update_one({"id": dataset_id}, {"$set": patch})
+    await db.audit_log.insert_one({
+        "entity_type": "dataset",
+        "entity_id": dataset_id,
+        "action": audit_action,
+        "author": author,
+        "date": now.isoformat(),
+        "justification": body.justification,
+    })
+
+    updated = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
     return updated
 
 
@@ -507,17 +613,13 @@ async def get_dataset_changelog(
     db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_user),
 ):
-    """Return changelog entries for label evolution chart."""
-    cursor = db.audit_log.find({"entity_id": dataset_id, "action": {"$in": ["LABEL_UPDATE", "LABEL_MODIFIED", "MASS_UPDATE"]}}).sort("timestamp", 1)
+    """Return audit log entries for a dataset, most recent first."""
+    cursor = db.audit_log.find({"dataset_id": dataset_id}).sort("date", -1)
     entries = []
     async for doc in cursor:
-        entries.append({
-            "date": doc.get("timestamp", "").isoformat() if hasattr(doc.get("timestamp"), "isoformat") else str(doc.get("timestamp", "")),
-            "changes": doc.get("changes", []),
-        })
-    if not entries:
-        entries = _mock_changelog()
-    return {"dataset_id": dataset_id, "entries": entries}
+        doc["id"] = str(doc.pop("_id"))
+        entries.append(doc)
+    return entries
 
 
 # ── Mock helpers (used when DB has no data yet) ───────────────────────────────
