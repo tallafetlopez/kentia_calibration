@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 
 const NAV_ITEMS = [
+  { to: '/herko/dashboard', label: 'Dashboard' },
   { to: '/herko/datasets', label: 'Datasets' },
   { to: '/herko/sw-releases', label: 'SW Releases' },
   { to: '/herko/release-center', label: 'Release Center' },
