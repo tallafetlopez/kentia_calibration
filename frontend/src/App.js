@@ -30,6 +30,7 @@ import HerkoSwReleasesPage from "./pages/herko/HerkoSwReleasesPage";
 import HerkoReleaseCenterPage from "./pages/herko/HerkoReleaseCenterPage";
 import HerkoAuditLogPage from "./pages/herko/HerkoAuditLogPage";
 import HerkoDashboardPage from "./pages/herko/HerkoDashboardPage";
+import HerkoTraceabilityPage from "./pages/herko/HerkoTraceabilityPage";
 
 // Initialize dev bypass interceptors if needed
 setupDevBypassInterceptors();
@@ -171,6 +172,7 @@ function AppContent() {
             <Route path="release-center" element={<HerkoReleaseCenterPage />} />
             <Route path="labels" element={<HerkoLabelsPage />} />
             <Route path="audit-log" element={<HerkoAuditLogPage />} />
+            <Route path="traceability" element={<HerkoTraceabilityPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

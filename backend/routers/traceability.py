@@ -229,6 +229,85 @@ async def get_audit_logs(
     return [_normalise(d) for d in all_docs[:limit]]
 
 
+@router.get("/chain")
+async def get_chain(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Full traceability chain from old (UUID) collections: SW Release → Datasets → Labels → Vehicle_SW_IDs."""
+    result = []
+
+    sw_releases = await db.software_releases.find(
+        {"status": {"$ne": "DEPRECATED"}}, {"_id": 0}
+    ).to_list(None)
+
+    for sr in sw_releases:
+        datasets = await db.datasets.find(
+            {"software_release_id": sr["id"], "lifecycle_state": {"$ne": "DEPRECATED"}},
+            {"_id": 0},
+        ).to_list(None)
+
+        ds_list = []
+        for ds in datasets:
+            ds_id = ds["id"]
+
+            labels_cursor = db.labels.find({"dataset_id": ds_id}, {"_id": 0})
+            labels_raw = await labels_cursor.to_list(None)
+            labels = [
+                {
+                    "id": l.get("id", ""),
+                    "label_name": l.get("label_name", ""),
+                    "current_value": l.get("current_value"),
+                    "level": l.get("level", ""),
+                    "confidence_status": l.get("confidence_status", ""),
+                    "regulatory_relevance": l.get("regulatory_relevance", "NO"),
+                    "last_modified_by": l.get("last_modified_by", ""),
+                    "last_modification_date": l.get("last_modification_date"),
+                    "modified": l.get("modified", False),
+                    "change_justification": l.get("change_justification"),
+                }
+                for l in labels_raw
+            ]
+
+            vsids_raw = await db.vehicle_sw_ids.find(
+                {"dataset_id": ds_id}, {"_id": 0}
+            ).to_list(None)
+            vehicle_sw_ids = [
+                {
+                    "id": v.get("id", v.get("vehicle_sw_id", "")),
+                    "vin": v.get("vin"),
+                    "variant": v.get("variant") or v.get("variant_id"),
+                    "mfg_order_ref": v.get("mfg_order_ref") or v.get("manufacturing_order_reference"),
+                    "service_case_ref": v.get("service_case_ref") or v.get("service_case_reference"),
+                    "created_at": str(v.get("created_at", "")),
+                }
+                for v in vsids_raw
+            ]
+
+            ds_list.append({
+                "id": ds_id,
+                "dataset_name": ds.get("dataset_name", ds.get("name", "")),
+                "lifecycle_state": ds.get("lifecycle_state", ds.get("state", "EDIT")),
+                "deployment_context": ds.get("deployment_context", ds.get("context", "")),
+                "creation_mode": ds.get("creation_mode", ds.get("mode", "")),
+                "author": ds.get("author", ""),
+                "labels": labels,
+                "vehicle_sw_ids": vehicle_sw_ids,
+            })
+
+        result.append({
+            "sw_release": {
+                "id": sr["id"],
+                "identifier": sr.get("identifier", ""),
+                "version": sr.get("version", ""),
+                "status": sr.get("status", "DRAFT"),
+            },
+            "datasets": ds_list,
+        })
+
+    return result
+
+
 @router.get("/audit-logs/authors", response_model=List[str])
 async def get_audit_log_authors(
     db: AsyncIOMotorDatabase = Depends(get_db),
