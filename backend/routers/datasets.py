@@ -388,6 +388,92 @@ async def delete_dataset(
 
 # ── Chart / Visualization endpoints ──────────────────────────────────────────
 
+def _parse_a2l(content: str) -> list:
+    """Extract CHARACTERISTIC and MEASUREMENT labels from A2L file content."""
+    import re
+    labels = []
+    seen = set()
+
+    # Match /begin CHARACTERISTIC or MEASUREMENT blocks
+    pattern = re.compile(
+        r'/begin\s+(CHARACTERISTIC|MEASUREMENT)\s+(\w+)\s+"([^"]*)"',
+        re.IGNORECASE,
+    )
+    for m in pattern.finditer(content):
+        block_type, name, description = m.group(1), m.group(2), m.group(3)
+        if name in seen:
+            continue
+        seen.add(name)
+        # Try to extract data type from next few lines after the match
+        snippet = content[m.end():m.end() + 300]
+        dtype_match = re.search(r'\b(FLOAT32_IEEE|FLOAT64_IEEE|UBYTE|SBYTE|UWORD|SWORD|ULONG|SLONG|A_UINT64|A_INT64)\b', snippet, re.IGNORECASE)
+        data_type = dtype_match.group(0).upper() if dtype_match else ("FLOAT" if block_type.upper() == "CHARACTERISTIC" else "VALUE")
+        labels.append({"label_name": name, "description": description, "data_type": data_type, "block_type": block_type.upper()})
+
+    return labels
+
+
+class ImportA2LRequest(BaseModel):
+    a2l_content: str
+
+
+@router.post("/{dataset_id}/labels/import-a2l")
+async def import_labels_from_a2l(
+    dataset_id: str,
+    body: ImportA2LRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Parse A2L content and bulk-insert labels for a dataset."""
+    dataset = await db.datasets.find_one({"id": dataset_id})
+    if not dataset:
+        try:
+            dataset = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
+        except Exception:
+            pass
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    parsed = _parse_a2l(body.a2l_content)
+    if not parsed:
+        raise HTTPException(status_code=422, detail="No labels found in A2L content")
+
+    now = datetime.utcnow()
+    author = user.get("username") or user.get("email")
+
+    docs = []
+    for lbl in parsed:
+        docs.append({
+            "dataset_id": dataset_id,
+            "label_name": lbl["label_name"],
+            "description": lbl.get("description", ""),
+            "data_type": lbl.get("data_type", "FLOAT"),
+            "block_type": lbl.get("block_type", "CHARACTERISTIC"),
+            "current_value": None,
+            "level": "CONFIGURATION",
+            "confidence_status": "EMPTY",
+            "regulatory_relevance": "NO",
+            "parametrizable_in_customer": "NO",
+            "modified": False,
+            "created_by": author,
+            "created_at": now.isoformat(),
+        })
+
+    result = await db.labels.insert_many(docs)
+
+    await db.audit_log.insert_one({
+        "entity_type": "dataset",
+        "entity_id": dataset_id,
+        "dataset_id": dataset_id,
+        "action": "A2L_IMPORT",
+        "author": author,
+        "date": now.isoformat(),
+        "justification": f"Imported {len(docs)} labels from A2L",
+    })
+
+    return {"imported": len(result.inserted_ids), "labels": [l["label_name"] for l in parsed]}
+
+
 @router.get("/{dataset_id}/labels")
 async def get_dataset_labels(
     dataset_id: str,
