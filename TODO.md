@@ -105,49 +105,59 @@
       - Mensaje informativo (no error rojo)
       - Explica que se ejecutará en submit
 
-## 📋 Tareas Futuras (NO CRÍTICAS)
+## ✅ v1.0 — Workflow Nominal (22/05/2026)
 
-- [x] Integrar componentes React en `App.jsx` (A2L viewer añadido a `SoftwareReleaseDetailPage`)
+- [x] `parsers/dcm_writer.py` — serializer DAMOS 2.0 (scalar/curve/map)
+- [x] `POST /api/v1/sw-releases/{id}/labels/export-dcm` — export DCM con filtros scope/maturity
+- [x] `POST /api/v1/labels/merge-preview` — diff seco de N calibraciones (identical/conflicts/only-in-X)
+- [x] `POST /api/v1/labels/merge-export` — merge overlay_wins|base_wins|manual → DCM descargable
+- [x] `_build_merged`: añade `default_value_a2l` + `needs_default_assignment`
+- [x] `SwReleaseLabelViewer`: botón Export DCM + modal, banner ⚠ Missing DCM + modal defaults
+- [x] `SwReleaseLabelViewer`: tabla compacta (fontSize 10.5, row 22px)
+- [x] `SwReleaseMerge.jsx`: UI merge con preview de conflictos + resolución manual
+- [x] `herko/Header`: role switcher dropdown en navbar
+- [x] `PATCH /api/auth/users/{id}/roles` — admin edita roles de otros usuarios
+- [x] `AdminPage`: checkboxes inline para editar roles (solo DM_Administrator)
+- [x] `scripts/clean_duplicate_uploads.py` — script dry-run/--delete huérfanos
+- [x] `docs/PACKAGING_RESEARCH.md` — análisis Electron/Tauri/Docker/PyInstaller
+- [x] `README.md` — sección Novedades v1.0
+- [x] Tag `v1.0.0` en git
+
+## 📋 v1.1 — Próximas features (aplazadas)
+
+- [ ] Escribir valores default al DCM desde modal "Assign defaults" (pendiente de spec con Víctor)
+- [ ] Empaquetado MSI/Electron (pendiente reunión Víctor — ver `docs/PACKAGING_RESEARCH.md`)
+- [ ] Límites por rol/workpackage al editar labels
+- [ ] Reglas de ownership ("tú no puedes tocar esto porque ya lo tocó otro")
+- [ ] Suavizado de curvas (pendiente spec técnica)
+- [ ] Importar DCM al dataset (workflow completo creación desde cero)
 - [ ] Crear tests pytest completos (`tests/test_sw_releases.py`)
-- [ ] Implementar UI para visualizar trazabilidad completa
-- [ ] Exportar datos A2L a CSV
-- [ ] Comparar dos archivos A2L
-- [ ] Configurar permisos por rol (ej: solo admins pueden cambiar status)
-- [ ] Optimizar índices en MongoDB
-- [ ] Implementar paginación en endpoints
-- [ ] Agregar filtros avanzados en UI
-- [ ] Histórico de cambios visualizado
-- [ ] Exportar datos a CSV/Excel
 - [ ] Notificaciones en tiempo real (WebSocket)
 
-## 🎯 Estado Actual
+## 🎯 Estado v1.0
 
-**Backend**: ✅ Completamente funcional
-- Todos los endpoints v1 implementados
-- Autenticación JWT funcionando
-- Validaciones de estado implementadas
-- Auditoría de cambios activa
-
-**Frontend**: ✅ Componentes listos para integrar
-- Modales reutilizables y funcionales
-- Conexión a endpoints v1 lista
-- Validación de formularios implementada
-- Manejo de errores presente
-
-**Base de Datos**: ✅ Estructura preparada
-- Colecciones creadas
-- Índices disponibles
-- Datos de prueba listos para cargar
+**Backend**: ✅ Workflow nominal completo
+**Frontend**: ✅ Label Viewer + Merge + Export DCM operativos
+**Tests**: ✅ DCM writer 5/5 passing
+**Tag**: ✅ v1.0.0
 
 ---
 
-## 🚀 Cómo Empezar
+## 🚀 Quick Start
 
-1. **Limpiar BD**: `python clear_db.py`
-2. **Cargar datos**: `python seed_test_data.py`
-3. **Arrancar backend**: `python -m uvicorn server:app --reload`
-4. **Arrancar frontend**: `npm start`
-5. **Probar endpoints**: Importar componentes React en App.jsx
+```bash
+# MongoDB debe estar corriendo en localhost:27017
 
-Consultar `IMPLEMENTATION_GUIDE.md` para detalles de API y ejemplos.
+# Terminal 1 — backend
+cd backend
+python -m uvicorn server:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2 — frontend
+cd frontend
+npm start
+```
+
+- Frontend: http://localhost:3000
+- Backend / Swagger: http://localhost:8000/docs
+- Login demo: `admin@herko.dev` / `password123`
 
