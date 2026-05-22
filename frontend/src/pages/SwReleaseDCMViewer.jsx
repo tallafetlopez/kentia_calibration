@@ -694,12 +694,29 @@ export default function SwReleaseDCMViewer() {
   }
 
   if (error) {
+    const noDcm = error.toLowerCase().includes("no dcm") || error.toLowerCase().includes("not found");
     return (
-      <div className="p-6">
-        <p className="text-red-600 mb-4">Error: {error}</p>
-        <button onClick={() => navigate(-1)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm">
-          ← Back
-        </button>
+      <div className="p-8 max-w-lg">
+        <div className="mb-4 p-4 rounded-lg border" style={{ borderColor: noDcm ? "#d97706" : "#ef4444", background: noDcm ? "#fffbeb" : "#fef2f2" }}>
+          <p className="font-semibold mb-1" style={{ color: noDcm ? "#92400e" : "#991b1b" }}>
+            {noDcm ? "No DCM file uploaded" : "Error loading DCM"}
+          </p>
+          <p className="text-sm" style={{ color: noDcm ? "#78350f" : "#7f1d1d" }}>
+            {noDcm
+              ? "Upload a .dcm file on the SW Release detail page first, then return here."
+              : error}
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => navigate(-1)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm">
+            ← Back
+          </button>
+          {noDcm && (
+            <button onClick={() => navigate(`/software-releases/${id}`)} className="px-4 py-2 rounded text-sm text-white" style={{ background: "#2D5016" }}>
+              Go to SW Release →
+            </button>
+          )}
+        </div>
       </div>
     );
   }

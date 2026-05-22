@@ -34,6 +34,8 @@ class SWReleaseResponse(SWReleaseBase):
     status: str
     created_by: str
     created_at: datetime
+    has_dcm: bool = False
+    dcm_filename: Optional[str] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -378,6 +380,7 @@ async def assign_dataset_to_release(
 
 def _to_response(doc: dict) -> SWReleaseResponse:
     """Convert MongoDB document to response model."""
+    dcm_fname = doc.get("dcm_filename")
     return SWReleaseResponse(
         id=str(doc["_id"]),
         identifier=doc["identifier"],
@@ -388,4 +391,6 @@ def _to_response(doc: dict) -> SWReleaseResponse:
         status=doc.get("status", "DRAFT"),
         created_by=doc.get("created_by", "unknown"),
         created_at=doc["created_at"],
+        has_dcm=bool(dcm_fname),
+        dcm_filename=dcm_fname,
     )

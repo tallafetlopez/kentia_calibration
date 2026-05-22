@@ -34,9 +34,11 @@ export default function SwReleaseDetailPage() {
     const identifier = legacyRelease.software_release_identifier;
     const version = legacyRelease.version;
 
-    const existing = (v1Releases || []).find(
+    const matches = (v1Releases || []).filter(
       (r) => r.identifier === identifier && r.version === version
     );
+    // prefer the release that already has a DCM uploaded
+    const existing = matches.find((r) => r.has_dcm) || matches[0];
     if (existing?.id) return existing.id;
 
     const releasedDate = legacyRelease.release_date
