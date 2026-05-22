@@ -696,6 +696,14 @@ export default function SwReleaseLabelViewer() {
   const [compareLoading, setCompareLoading] = useState(false);
   const [swReleases,     setSwReleases]     = useState([]);
 
+  // Export DCM modal
+  const [showExportDcmModal,    setShowExportDcmModal]    = useState(false);
+  const [exportFilters,         setExportFilters]         = useState({ scope: "saved", maturity: [], filename: "" });
+  const [exporting,             setExporting]             = useState(false);
+
+  // Missing DCM default assignment modal
+  const [showDefaultAssignModal, setShowDefaultAssignModal] = useState(false);
+
   // ── Fetch SW Releases for compare dropdown ───────────────────────────────────
   useEffect(() => {
     api.get("/v1/sw-releases").then(r => setSwReleases(r.data || [])).catch(() => {});
@@ -850,6 +858,35 @@ export default function SwReleaseLabelViewer() {
     setCompareId(""); setBaseLabels({}); if (quickFilter === "changed") setQuickFilter("");
   };
 
+  const exportDCM = async () => {
+    setExporting(true);
+    try {
+      let label_names = null;
+      if (exportFilters.scope === "filtered") label_names = filtered.map(l => l.name);
+      else if (exportFilters.scope === "all")  label_names = allLabels.map(l => l.name);
+      const body = {
+        label_names,
+        only_saved:    exportFilters.scope === "saved",
+        only_maturity: exportFilters.maturity.length ? exportFilters.maturity : null,
+        filename:      exportFilters.filename || undefined,
+      };
+      const resp = await api.post(`/v1/sw-releases/${id}/labels/export-dcm`, body, { responseType: "blob" });
+      const blob = new Blob([resp.data], { type: "application/octet-stream" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = exportFilters.filename || `export_${new Date().toISOString().slice(0, 10)}.dcm`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("DCM exported");
+      setShowExportDcmModal(false);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ── Loading / error ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -899,6 +936,10 @@ export default function SwReleaseLabelViewer() {
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
           ↓ Export CSV
         </button>
+        <button onClick={() => setShowExportDcmModal(true)}
+          className="text-[11px] font-semibold px-2.5 py-1 rounded border border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+          ↓ Export DCM
+        </button>
         <button onClick={() => { setReloadKey(k => k + 1); setSelectedParam(null); }}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
           ↺ Reload
@@ -945,6 +986,19 @@ export default function SwReleaseLabelViewer() {
           {filtered.length < allLabels.length && (
             <span className="ml-auto text-blue-600 font-medium">Filtered: {filtered.length.toLocaleString()}</span>
           )}
+        </div>
+      )}
+
+      {/* ── Missing DCM warning banner ───────────────────────────────────────── */}
+      {quickFilter === "missing_dcm" && filtered.length > 0 && (
+        <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 flex items-center justify-between text-xs shrink-0">
+          <span className="text-amber-800">
+            ⚠ {filtered.length} labels in A2L but missing DCM value.
+          </span>
+          <button onClick={() => setShowDefaultAssignModal(true)}
+            className="text-[11px] px-2.5 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700">
+            Assign defaults…
+          </button>
         </div>
       )}
 
@@ -1005,21 +1059,21 @@ export default function SwReleaseLabelViewer() {
 
         {/* ── Table ────────────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto min-w-0">
-          <table className="w-full border-collapse" style={{ tableLayout: "fixed", fontSize: 11 }}>
+          <table className="w-full border-collapse" style={{ tableLayout: "fixed", fontSize: 10.5 }}>
             <colgroup>
-              <col style={{width:28}}/>   {/* Typ */}
-              <col style={{width:210}}/>  {/* Name */}
-              <col style={{width:36}}/>   {/* Save */}
-              <col style={{width:88}}/>   {/* System Status */}
-              <col style={{width:42}}/>   {/* Scor */}
-              <col style={{width:110}}/>  {/* Value or Dim */}
-              <col style={{width:110}}/>  {/* Value or Dim Old */}
-              <col style={{width:68}}/>   {/* Label Flags */}
-              <col style={{width:70}}/>   {/* Owner */}
-              <col style={{width:70}}/>   {/* Deputy */}
-              <col style={{width:92}}/>   {/* Function */}
-              <col style={{width:58}}/>   {/* Fn Ver */}
-              <col style={{width:82}}/>   {/* User Status */}
+              <col style={{width:24}}/>   {/* Typ */}
+              <col style={{width:185}}/>  {/* Name */}
+              <col style={{width:30}}/>   {/* Save */}
+              <col style={{width:74}}/>   {/* System Status */}
+              <col style={{width:36}}/>   {/* Scor */}
+              <col style={{width:95}}/>   {/* Value or Dim */}
+              <col style={{width:95}}/>   {/* Value or Dim Old */}
+              <col style={{width:50}}/>   {/* Label Flags */}
+              <col style={{width:60}}/>   {/* Owner */}
+              <col style={{width:60}}/>   {/* Deputy */}
+              <col style={{width:78}}/>   {/* Function */}
+              <col style={{width:52}}/>   {/* Fn Ver */}
+              <col style={{width:72}}/>   {/* User Status */}
               <col/>                       {/* Comment */}
             </colgroup>
             <thead className="sticky top-0 z-10 bg-gray-100 border-b-2 border-gray-300">
@@ -1050,7 +1104,7 @@ export default function SwReleaseLabelViewer() {
                   <tr
                     key={l.name}
                     onClick={() => openDetail(l)}
-                    style={{ height: 26 }}
+                    style={{ height: 22 }}
                     className={[
                       isSelected  ? "bg-blue-50 border-l-2 border-blue-500" : (i%2===0 ? "bg-white" : "bg-gray-50/50"),
                       isClickable ? "cursor-pointer hover:bg-blue-50/50" : "cursor-default",
@@ -1155,6 +1209,122 @@ export default function SwReleaseLabelViewer() {
           onSaveMaturity={saveMaturity}
         />
       </div>
+
+      {/* ── Export DCM modal ─────────────────────────────────────────────────── */}
+      {showExportDcmModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+             onClick={() => setShowExportDcmModal(false)}>
+          <div className="bg-white rounded shadow-lg p-5 w-[420px] max-w-[90vw]"
+               onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-sm mb-3">Export DCM</h3>
+
+            <label className="block text-[11px] font-semibold text-gray-600 mb-1">Scope</label>
+            <div className="flex flex-col gap-1 mb-3">
+              {[
+                { v: "saved",    label: `Only saved labels (🔒 ${allLabels.filter(l=>l.save).length})` },
+                { v: "filtered", label: `Current filtered view (${filtered.length})` },
+                { v: "all",      label: `All labels in release (${allLabels.length})` },
+              ].map(o => (
+                <label key={o.v} className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="radio" name="dcm-scope" checked={exportFilters.scope === o.v}
+                    onChange={() => setExportFilters(f => ({...f, scope: o.v}))} />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+
+            <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+              Maturity filter <span className="font-normal text-gray-400">(empty = all)</span>
+            </label>
+            <div className="flex gap-3 mb-3">
+              {[0, 25, 50, 75, 100].map(m => (
+                <label key={m} className="flex items-center gap-1 text-xs cursor-pointer">
+                  <input type="checkbox"
+                    checked={exportFilters.maturity.includes(m)}
+                    onChange={e => setExportFilters(f => ({
+                      ...f,
+                      maturity: e.target.checked
+                        ? [...f.maturity, m]
+                        : f.maturity.filter(x => x !== m)
+                    }))} />
+                  {m}%
+                </label>
+              ))}
+            </div>
+
+            <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+              Filename <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              value={exportFilters.filename}
+              onChange={e => setExportFilters(f => ({...f, filename: e.target.value}))}
+              placeholder="my_export.dcm"
+              className="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-4"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowExportDcmModal(false)}
+                className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={exportDCM} disabled={exporting}
+                className="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50">
+                {exporting ? "Exporting…" : "Export DCM"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Assign default values modal ──────────────────────────────────────── */}
+      {showDefaultAssignModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+             onClick={() => setShowDefaultAssignModal(false)}>
+          <div className="bg-white rounded shadow-lg p-5 w-[480px] max-w-[90vw]"
+               onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-sm mb-2">Assign default values</h3>
+            <p className="text-xs text-gray-600 mb-3">
+              {filtered.length} labels are missing DCM values. These labels are in A2L but have no calibration data.
+            </p>
+
+            <div className="max-h-60 overflow-y-auto border border-gray-200 rounded text-xs mb-4">
+              <table className="w-full">
+                <thead className="bg-gray-100 sticky top-0">
+                  <tr>
+                    <th className="text-left px-2 py-1">Label</th>
+                    <th className="text-left px-2 py-1">A2L lower limit</th>
+                    <th className="text-left px-2 py-1">A2L upper limit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.slice(0, 100).map(l => (
+                    <tr key={l.name} className="border-t border-gray-100">
+                      <td className="px-2 py-0.5 font-mono text-blue-600">{l.name}</td>
+                      <td className="px-2 py-0.5 font-mono">{l.lower_limit ?? "—"}</td>
+                      <td className="px-2 py-0.5 font-mono">{l.upper_limit ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filtered.length > 100 && (
+                <p className="text-center text-gray-400 py-1 text-[10px]">…and {filtered.length - 100} more</p>
+              )}
+            </div>
+
+            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-3">
+              Default value assignment (writing to DCM) is planned for v1.1.
+              For now, use Export DCM with scope "all" and edit values externally.
+            </p>
+
+            <div className="flex justify-end">
+              <button onClick={() => setShowDefaultAssignModal(false)}
+                className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

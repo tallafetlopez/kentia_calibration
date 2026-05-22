@@ -19,6 +19,7 @@ import TraceabilityPage from "./pages/TraceabilityPage";
 import AdminPage from "./pages/AdminPage";
 import SwReleaseDCMViewer from "./pages/SwReleaseDCMViewer";
 import SwReleaseLabelViewer from "./pages/SwReleaseLabelViewer";
+import SwReleaseMerge from "./pages/SwReleaseMerge";
 import WorkPackagesPage from "./pages/WorkPackagesPage";
 import { Toaster } from "./components/ui/sonner";
 import HerkoLabelsPage from "./pages/herko/HerkoLabelsPage";
@@ -80,6 +81,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <SwReleaseLabelViewer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/software-releases/:id/merge"
+            element={
+              <ProtectedRoute>
+                <SwReleaseMerge />
               </ProtectedRoute>
             }
           />
