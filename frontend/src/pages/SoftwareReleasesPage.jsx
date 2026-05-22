@@ -61,8 +61,15 @@ export default function SoftwareReleasesPage() {
 
   const create = async () => {
     try {
-      // 1) Create legacy release
-      const { data: created } = await api.post("/software-releases", form);
+      // 1) Create legacy release — skip if identifier+version already exists
+      const { data: existingList } = await api.get("/software-releases");
+      const alreadyExists = (existingList || []).find(r =>
+        r.software_release_identifier === form.software_release_identifier &&
+        r.version === form.version
+      );
+      if (!alreadyExists) {
+        await api.post("/software-releases", form);
+      }
 
       // 2) Resolve or create v1 release
       const { data: v1List } = await api.get("/v1/sw-releases");
@@ -81,21 +88,29 @@ export default function SoftwareReleasesPage() {
       }
       const v1Id = v1._id || v1.id;
 
-      // 3) Upload A2L if provided
+      // 3) Upload A2L — non-fatal
       if (a2lFile) {
-        const fd = new FormData();
-        fd.append("file", a2lFile);
-        await api.post(`/v1/sw-releases/${v1Id}/a2l/upload`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        try {
+          const fd = new FormData();
+          fd.append("file", a2lFile);
+          await api.post(`/v1/sw-releases/${v1Id}/a2l/upload`, fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        } catch (e) {
+          toast.warning(`A2L upload failed: ${e.response?.data?.detail || e.message}`);
+        }
       }
-      // 4) Upload DCM if provided
+      // 4) Upload DCM — non-fatal
       if (dcmFile) {
-        const fd = new FormData();
-        fd.append("file", dcmFile);
-        await api.post(`/v1/sw-releases/${v1Id}/dcm/upload`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        try {
+          const fd = new FormData();
+          fd.append("file", dcmFile);
+          await api.post(`/v1/sw-releases/${v1Id}/dcm/upload`, fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        } catch (e) {
+          toast.warning(`DCM upload failed: ${e.response?.data?.detail || e.message}`);
+        }
       }
 
       setOpen(false);
