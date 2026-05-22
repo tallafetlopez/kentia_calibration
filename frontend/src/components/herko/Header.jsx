@@ -4,8 +4,9 @@ import { useAuth } from '../../lib/auth'
 
 const NAV_ITEMS = [
   { to: '/herko/datasets', label: 'Datasets' },
+  { to: '/herko/sw-releases', label: 'SW Releases' },
+  { to: '/herko/release-center', label: 'Release Center' },
   { to: '/herko/labels', label: 'Labels' },
-  { to: '/reviews', label: 'Reviews' },
   { to: '/work-packages', label: 'WorkPackages' },
   { to: '/admin', label: 'Admin' },
 ]

@@ -275,6 +275,107 @@ async def get_release_label_stats(
     return {"release_id": release_id, "datasets": result}
 
 
+class AssignDatasetRequest(BaseModel):
+    dataset_id: str
+    vin: Optional[str] = None
+    variant_id: Optional[str] = None
+    manufacturing_order_reference: Optional[str] = None
+    service_case_reference: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+@router.post("/{release_id}/assign-dataset")
+async def assign_dataset_to_release(
+    release_id: str,
+    body: AssignDatasetRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Transition dataset RELEASE_CANDIDATE → RELEASED and generate Vehicle SW ID."""
+    import uuid as _uuid
+
+    # 1. Load dataset — try old UUID field first, then ObjectId
+    dataset = await db.datasets.find_one({"id": body.dataset_id})
+    using_old = dataset is not None
+    if not dataset:
+        try:
+            dataset = await db.datasets.find_one({"_id": ObjectId(body.dataset_id)})
+        except Exception:
+            pass
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    state = dataset.get("lifecycle_state") or dataset.get("state", "")
+    if state != "RELEASE_CANDIDATE":
+        raise HTTPException(status_code=400, detail="Dataset must be in RELEASE_CANDIDATE state")
+
+    # 2. Load SW Release
+    try:
+        sr_oid = ObjectId(release_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid release ID format")
+
+    sr = await db.sw_releases.find_one({"_id": sr_oid})
+    if not sr:
+        raise HTTPException(status_code=404, detail="SW Release not found")
+
+    now = datetime.utcnow()
+    author = user.get("username") or user.get("email")
+
+    # 3. Transition dataset to RELEASED
+    if using_old:
+        await db.datasets.update_one(
+            {"id": body.dataset_id},
+            {"$set": {"lifecycle_state": "RELEASED", "last_modified_date": now.isoformat()}},
+        )
+    else:
+        await db.datasets.update_one(
+            {"_id": dataset["_id"]},
+            {"$set": {"state": "RELEASED", "is_locked": True, "updated_at": now}},
+        )
+
+    # 4. Generate Vehicle SW ID inline
+    vehicle_sw_id = str(_uuid.uuid4())
+    dataset_name = dataset.get("dataset_name") or dataset.get("name", "")
+    sw_release_id = dataset.get("software_release_id") or dataset.get("sw_release_id") or release_id
+
+    vsw_doc = {
+        "vehicle_sw_id": vehicle_sw_id,
+        "sw_release_id": sw_release_id,
+        "sw_release_identifier": sr.get("identifier", ""),
+        "dataset_id": body.dataset_id,
+        "dataset_name": dataset_name,
+        "vin": body.vin,
+        "variant": body.variant_id,
+        "mfg_order_ref": body.manufacturing_order_reference,
+        "service_case_ref": body.service_case_reference,
+        "created_by": author,
+        "created_at": now,
+    }
+    vsw_result = await db.vehicle_sw_ids.insert_one(vsw_doc)
+
+    # 5. Audit log
+    await db.audit_log.insert_one({
+        "entity_type": "dataset",
+        "entity_id": body.dataset_id,
+        "dataset_id": body.dataset_id,
+        "action": "DATASET_RELEASED",
+        "author": author,
+        "date": now.isoformat(),
+        "vehicle_sw_id": vehicle_sw_id,
+        "justification": f"Released via SW Release {sr.get('identifier', release_id)}",
+    })
+
+    return {
+        "dataset_id": body.dataset_id,
+        "dataset_name": dataset_name,
+        "lifecycle_state": "RELEASED",
+        "vehicle_sw_id": vehicle_sw_id,
+        "vehicle_sw_id_doc_id": str(vsw_result.inserted_id),
+    }
+
+
 def _to_response(doc: dict) -> SWReleaseResponse:
     """Convert MongoDB document to response model."""
     return SWReleaseResponse(
