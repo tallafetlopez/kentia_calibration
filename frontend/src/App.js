@@ -18,6 +18,7 @@ import VehicleAssignmentPage from "./pages/VehicleAssignmentPage";
 import TraceabilityPage from "./pages/TraceabilityPage";
 import AdminPage from "./pages/AdminPage";
 import SwReleaseDCMViewer from "./pages/SwReleaseDCMViewer";
+import SwReleaseLabelViewer from "./pages/SwReleaseLabelViewer";
 import WorkPackagesPage from "./pages/WorkPackagesPage";
 import { Toaster } from "./components/ui/sonner";
 import HerkoLabelsPage from "./pages/herko/HerkoLabelsPage";
@@ -71,6 +72,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <SwReleaseDCMViewer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/software-releases/:id/labels"
+            element={
+              <ProtectedRoute>
+                <SwReleaseLabelViewer />
               </ProtectedRoute>
             }
           />

@@ -38,6 +38,8 @@ class A2lCharacteristic:
     lower_limit: float = 0.0
     upper_limit: float = 0.0
     byte_order: str = "MSB_FIRST"
+    unit: str = ""
+    function: str = ""
 
 
 @dataclass
@@ -73,6 +75,7 @@ class A2lDataset:
     measurements: dict = field(default_factory=dict)       # dict[str, A2lMeasurement]
     compu_methods: dict = field(default_factory=dict)      # dict[str, A2lCompuMethod]
     parse_errors: list = field(default_factory=list)       # list[str]
+    function_map: dict = field(default_factory=dict)   # dict[char_name, function_name]
 
     def summary(self) -> str:
         return (
@@ -133,6 +136,8 @@ class A2lParser:
         self._parse_characteristics(text, ds)
         self._parse_measurements(text, ds)
         self._parse_compu_methods(text, ds)
+        self._parse_functions(text, ds)
+        self._resolve_enrichment(ds)
 
         return ds
 
@@ -278,6 +283,41 @@ class A2lParser:
                 ds.parse_errors.append(
                     f"COMPU_METHOD '{m.group(1)}' parse error: {exc}"
                 )
+
+    def _parse_functions(self, text: str, ds: A2lDataset) -> None:
+        """Maps each characteristic name to its owning FUNCTION block."""
+        func_re = re.compile(r"/begin FUNCTION\s+(\S+)")
+        end_func_re = re.compile(r"/end FUNCTION\b")
+        char_block_re = re.compile(
+            r"/begin (?:DEF_CHARACTERISTIC|REF_CHARACTERISTIC)\s+(.*?)"
+            r"/end (?:DEF_CHARACTERISTIC|REF_CHARACTERISTIC)",
+            re.DOTALL,
+        )
+        pos = 0
+        while True:
+            m = func_re.search(text, pos)
+            if not m:
+                break
+            func_name = m.group(1)
+            end_m = end_func_re.search(text, m.end())
+            if not end_m:
+                break
+            block = text[m.start(): end_m.end()]
+            for cb in char_block_re.finditer(block):
+                for char_name in cb.group(1).split():
+                    char_name = char_name.strip()
+                    if char_name and not char_name.startswith("/"):
+                        if char_name not in ds.function_map:
+                            ds.function_map[char_name] = func_name
+            pos = end_m.end()
+
+    def _resolve_enrichment(self, ds: A2lDataset) -> None:
+        """Post-process: set unit from compu_method and function from function_map."""
+        for name, char in ds.characteristics.items():
+            cm = ds.compu_methods.get(char.conversion)
+            if cm and cm.unit:
+                char.unit = cm.unit
+            char.function = ds.function_map.get(name, "")
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 

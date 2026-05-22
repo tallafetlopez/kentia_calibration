@@ -284,12 +284,20 @@ export default function SwReleaseDetailPage() {
                     <span>{dcmSummary.summary?.total_curves} Curves</span>
                     <span>{dcmSummary.summary?.total_maps} Maps</span>
                   </div>
-                  <button
-                    onClick={() => navigate(`/software-releases/${v1SwReleaseId || id}/dcm`)}
-                    className="mt-1 text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    View parameters ↗
-                  </button>
+                  <div className="flex gap-3 mt-1">
+                    <button
+                      onClick={() => navigate(`/software-releases/${v1SwReleaseId || id}/dcm`)}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      View parameters ↗
+                    </button>
+                    <button
+                      onClick={() => navigate(`/software-releases/${v1SwReleaseId || id}/labels`)}
+                      className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold"
+                    >
+                      Label Viewer (CRETA) ↗
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div>

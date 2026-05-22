@@ -14,6 +14,7 @@ from routers import sw_releases, datasets, vehicle_sw_ids, a2l
 from routers import traceability as traceability_router
 from routers import dcm as dcm_router
 from routers import work_packages as work_packages_router
+from routers import labels as labels_router
 
 load_dotenv(ROOT_DIR / ".env")
 
@@ -87,6 +88,7 @@ async def on_startup():
     await db.labels.create_index("owner")
     await db.labels.create_index("maturity")
     await db.work_packages.create_index([("code", 1), ("ecu_id", 1)], unique=True)
+    await db.label_metadata.create_index([("sw_release_id", 1), ("label_name", 1)], unique=True)
     await db.audit_log.create_index("date")
 
     existing = await db.users.count_documents({})
@@ -1153,6 +1155,7 @@ api_v1.include_router(traceability_router.router)
 api_v1.include_router(a2l.router)
 api_v1.include_router(dcm_router.router)
 api_v1.include_router(work_packages_router.router)
+api_v1.include_router(labels_router.router)
 app.include_router(api_v1)
 
 # ── Visualization module (non-destructive extension) ──────────────────────────
