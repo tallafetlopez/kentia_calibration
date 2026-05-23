@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "routers"))
 
 from routers.calibration_values import _apply_operation
 from models_calibration import CalibUpdate
+from utils.map_limits import clamp_matrix, MAX_MAP_DIM
 
 
 def make_body(operation, value=None, cells=None, smooth_passes=1):
@@ -75,3 +76,17 @@ def test_map_bilinear_interpolate():
     assert result[4][0] == 30.0
     assert result[4][4] == 70.0
     assert result[2][2] == pytest.approx(40.0)
+
+
+def test_oversized_map_clamped_before_operation():
+    """17x17 map must be clamped to 16x16 by clamp_matrix before any operation."""
+    oversized = [[float(r * 17 + c) for c in range(17)] for r in range(17)]
+    clamped, _, _, info = clamp_matrix(oversized)
+    assert len(clamped) == MAX_MAP_DIM
+    assert all(len(row) == MAX_MAP_DIM for row in clamped)
+    assert info["truncated"] is True
+    assert info["original_dimensions"] == {"rows": 17, "cols": 17}
+    # After clamping, operations work normally on 16x16
+    result = _apply_operation(clamped, "set", make_body("set", value=99.0, cells=[[0, 0]]))
+    assert result[0][0] == 99.0
+    assert len(result) == MAX_MAP_DIM
