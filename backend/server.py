@@ -15,6 +15,7 @@ from routers import traceability as traceability_router
 from routers import dcm as dcm_router
 from routers import work_packages as work_packages_router
 from routers import labels as labels_router
+from routers import calibration_values as calibration_values_router
 
 load_dotenv(ROOT_DIR / ".env")
 
@@ -1184,6 +1185,7 @@ api_v1.include_router(a2l.router)
 api_v1.include_router(dcm_router.router)
 api_v1.include_router(work_packages_router.router)
 api_v1.include_router(labels_router.router)
+api_v1.include_router(calibration_values_router.router)
 app.include_router(api_v1)
 
 # ── Visualization module (non-destructive extension) ──────────────────────────

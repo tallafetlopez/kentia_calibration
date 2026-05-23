@@ -238,6 +238,17 @@ async def _build_merged(sr: dict, db) -> list[dict]:
             "needs_default_assignment": (in_a2l and not in_dcm),
         })
 
+    # Enrich with modified_wp flag from working values collection
+    working_modified: set[str] = set()
+    async for doc in db.label_working_values.find(
+        {"sw_release_id": sr_id, "modified": True},
+        {"label_name": 1},
+    ):
+        working_modified.add(doc["label_name"])
+
+    for label in labels:
+        label["modified_wp"] = label["name"] in working_modified
+
     return labels
 
 
@@ -540,6 +551,12 @@ async def export_labels_to_dcm(
         curves_map  = {p["name"]: p for p in parsed.get("curves",  [])}
         maps_map    = {p["name"]: p for p in parsed.get("maps",    [])}
 
+    # Load working page values (use WP when modified, else RP/DCM)
+    sr_id_str = str(sr["_id"])
+    working_docs: dict = {}
+    async for doc in db.label_working_values.find({"sw_release_id": sr_id_str}):
+        working_docs[doc["label_name"]] = doc
+
     enriched: list[dict] = []
     for label in filtered:
         n   = label["name"]
@@ -550,20 +567,21 @@ async def export_labels_to_dcm(
             "long_identifier":  label.get("long_identifier", ""),
             "unit":             label.get("unit", ""),
         }
+        wp_doc = working_docs.get(n)
         if t == "scalar":
-            src       = scalars_map.get(n, {})
-            rec["value"] = src.get("value", 0.0)
+            src          = scalars_map.get(n, {})
+            rec["value"] = wp_doc["wp_value"] if (wp_doc and wp_doc.get("modified")) else src.get("value", 0.0)
         elif t == "curve":
             src           = curves_map.get(n, {})
             rec["x_axis"] = src.get("x_axis", [])
-            rec["values"] = src.get("values", [])
+            rec["values"] = wp_doc["wp_value"] if (wp_doc and wp_doc.get("modified")) else src.get("values", [])
             rec["unit_x"] = src.get("unit_x", "")
             rec["unit_w"] = src.get("unit_w", "")
         elif t == "map":
             src           = maps_map.get(n, {})
             rec["x_axis"] = src.get("x_axis", [])
             rec["y_axis"] = src.get("y_axis", [])
-            rec["values"] = src.get("values", [])
+            rec["values"] = wp_doc["wp_value"] if (wp_doc and wp_doc.get("modified")) else src.get("values", [])
             rec["unit_x"] = src.get("unit_x", "")
             rec["unit_y"] = src.get("unit_y", "")
             rec["unit_w"] = src.get("unit_w", "")

@@ -3,6 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { ScalarChart, CurveChart, MapChart } from "../components/charts";
+import ScalarEditor from "../components/charts/ScalarEditor";
+import CurveEditor  from "../components/charts/CurveEditor";
+import MapEditor    from "../components/charts/MapEditor";
+import HistoryTab   from "../components/charts/HistoryTab";
 
 function fmt(v) {
   const n = Number(v);
@@ -454,17 +458,20 @@ function CompareTab({ label, baseValue, baseSrId }) {
 }
 
 // ─── Chart panel (tabbed) ─────────────────────────────────────────────────────
-function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity, compareActive, baseValue, baseSrId }) {
-  const [tab, setTab] = useState("chart");
-  useEffect(() => { setTab("chart"); }, [param?.name]);
+function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity, compareActive, baseValue, baseSrId, swReleaseId, onWpChange }) {
+  const [tab, setTab] = useState("edit");
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => { setTab("edit"); }, [param?.name]);
   if (!param && !loading) return null;
   const type = param?._type || param?.type;
   const TABS = [
-    { id: "chart",    label: "Chart"    },
+    { id: "edit",     label: "Edit"     },
+    { id: "chart",    label: "View"     },
     { id: "data",     label: "Data"     },
     ...(compareActive ? [{ id: "compare", label: "Compare" }] : []),
     { id: "maturity", label: "Maturity" },
     { id: "info",     label: "Info"     },
+    { id: "history",  label: "History"  },
   ];
   return (
     <div className="flex flex-col border-l border-gray-200 bg-white overflow-hidden shrink-0" style={{width:600,minWidth:600}}>
@@ -517,6 +524,11 @@ function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity, compa
             Loading parameter data…
           </div>
         )}
+        {!loading && param && tab === "edit" && swReleaseId && (
+          type === "curve" ? <CurveEditor  key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} /> :
+          type === "map"   ? <MapEditor    key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} /> :
+                             <ScalarEditor key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} />
+        )}
         {!loading && param && tab === "chart" && (
           type === "curve" ? <CurveChart param={param} /> :
           type === "map"   ? <MapChart param={param} />   :
@@ -526,6 +538,9 @@ function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity, compa
         {!loading && param && tab === "compare"  && <CompareTab label={param} baseValue={baseValue} baseSrId={baseSrId} />}
         {!loading && param && tab === "maturity" && <MaturityTab label={param} onSaveMaturity={onSaveMaturity} />}
         {!loading && param && tab === "info"     && <InfoTab label={param} onSaveMeta={onSaveMeta} />}
+        {!loading && param && tab === "history"  && swReleaseId && (
+          <HistoryTab swReleaseId={swReleaseId} labelName={param.name} />
+        )}
       </div>
     </div>
   );
@@ -1119,8 +1134,13 @@ export default function SwReleaseLabelViewer() {
                     <td className="px-1 py-0 text-center border-r border-gray-100">{TYP_ICON[l.type]}</td>
                     {/* Name */}
                     <td className="px-2 py-0 border-r border-gray-100 truncate">
-                      <span style={{fontFamily:"'Consolas','Courier New',monospace",fontSize:11,color:isClickable?"#2563eb":"#1f2937"}}>
-                        {l.name}
+                      <span className="flex items-center gap-1">
+                        <span style={{fontFamily:"'Consolas','Courier New',monospace",fontSize:11,color:isClickable?"#2563eb":"#1f2937"}}>
+                          {l.name}
+                        </span>
+                        {l.modified_wp && (
+                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full shrink-0" title="Has working page edits" />
+                        )}
                       </span>
                     </td>
                     {/* Save (checkbox toggle) */}
@@ -1222,6 +1242,10 @@ export default function SwReleaseLabelViewer() {
           compareActive={!!compareId}
           baseValue={selectedParam ? baseLabels[selectedParam.name] : undefined}
           baseSrId={compareId || undefined}
+          swReleaseId={id}
+          onWpChange={() => setAllLabels(prev => prev.map(l =>
+            l.name === selectedParam?.name ? { ...l, modified_wp: true } : l
+          ))}
         />
       </div>
 
