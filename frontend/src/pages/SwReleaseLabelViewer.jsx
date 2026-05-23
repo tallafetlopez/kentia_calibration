@@ -9,6 +9,19 @@ function fmt(v) {
   if (!Number.isFinite(n)) return String(v ?? "");
   return Math.abs(n) >= 100 ? n.toFixed(1) : n.toFixed(2);
 }
+function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
+const MAP_STOPS = [
+  { t: 0.0, c: [20, 68, 84] }, { t: 0.25, c: [35, 134, 136] },
+  { t: 0.5, c: [120, 198, 121] }, { t: 0.75, c: [249, 200, 78] },
+  { t: 1.0, c: [238, 105, 85] },
+];
+function mapColor(t) {
+  let i = 0;
+  while (i < MAP_STOPS.length - 1 && t > MAP_STOPS[i + 1].t) i++;
+  const a = MAP_STOPS[i], b = MAP_STOPS[Math.min(MAP_STOPS.length - 1, i + 1)];
+  const u = (t - a.t) / ((b.t - a.t) || 1);
+  return `rgb(${lerp(a.c[0],b.c[0],u)},${lerp(a.c[1],b.c[1],u)},${lerp(a.c[2],b.c[2],u)})`;
+}
 
 // ─── Data tab ─────────────────────────────────────────────────────────────────
 function DataTab({ label }) {
