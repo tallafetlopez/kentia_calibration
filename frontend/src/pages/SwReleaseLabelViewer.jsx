@@ -4,6 +4,12 @@ import { api } from "../lib/api";
 import { toast } from "sonner";
 import { ScalarChart, CurveChart, MapChart } from "../components/charts";
 
+function fmt(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v ?? "");
+  return Math.abs(n) >= 100 ? n.toFixed(1) : n.toFixed(2);
+}
+
 // ─── Data tab ─────────────────────────────────────────────────────────────────
 function DataTab({ label }) {
   if (!label) return null;
