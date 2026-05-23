@@ -3,9 +3,19 @@ DCM Writer — DAMOS 2.0 format serializer.
 Encoding: ISO-8859-1 (matches the parser).
 """
 from __future__ import annotations
+import logging
+import sys
 from datetime import datetime
-from typing import Iterable
 from pathlib import Path
+from typing import Iterable
+
+_BACKEND_DIR = Path(__file__).parent.parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
+from utils.map_limits import clamp_matrix, is_2d_matrix  # noqa: E402
+
+_log = logging.getLogger(__name__)
 
 
 def _fmt_value(v) -> str:
@@ -88,6 +98,21 @@ def write_dcm(labels: Iterable[dict], output_path: str | Path, header: dict | No
             x_axis   = label.get("x_axis")  or []
             y_axis   = label.get("y_axis")  or []
             z_matrix = label.get("values")  or []
+            if z_matrix and is_2d_matrix(z_matrix):
+                z_matrix, x_clamp, y_clamp, clamp_info = clamp_matrix(z_matrix, x_axis or None, y_axis or None)
+                if clamp_info:
+                    _log.warning(
+                        "DCM writer: map %s clamped from %dx%d to %dx%d at export time",
+                        name,
+                        clamp_info["original_dimensions"]["rows"],
+                        clamp_info["original_dimensions"]["cols"],
+                        len(z_matrix),
+                        len(z_matrix[0]) if z_matrix else 0,
+                    )
+                if x_clamp is not None:
+                    x_axis = x_clamp
+                if y_clamp is not None:
+                    y_axis = y_clamp
             cols = len(x_axis) or (len(z_matrix[0]) if z_matrix else 0)
             rows = len(y_axis) or len(z_matrix)
             lines.append(f"GRUPPENKENNFELD {name} {cols} {rows}")
