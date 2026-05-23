@@ -19,6 +19,7 @@ if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
 from models_calibration import CalibUpdate, CalibResetRequest
+from utils.map_limits import clamp_matrix, is_2d_matrix, MAX_MAP_DIM
 
 router = APIRouter(tags=["calibration_values"])
 
@@ -60,6 +61,24 @@ async def _get_or_init_working(db, sr_id: str, label_name: str) -> dict:
         {"sw_release_id": sr_id_str, "label_name": label_name}
     )
     if doc:
+        # Lazy migration: clamp legacy oversized map documents
+        if doc.get("type") == "map" and is_2d_matrix(doc.get("rp_value")):
+            rp_clamped, _, _, rp_info = clamp_matrix(doc["rp_value"])
+            wp_clamped, _, _, _ = clamp_matrix(doc.get("wp_value") or rp_clamped)
+            if rp_info is not None:
+                await db.label_working_values.update_one(
+                    {"_id": doc["_id"]},
+                    {"$set": {
+                        "rp_value":            rp_clamped,
+                        "wp_value":            wp_clamped,
+                        "truncated":           True,
+                        "original_dimensions": rp_info["original_dimensions"],
+                    }},
+                )
+                doc["rp_value"] = rp_clamped
+                doc["wp_value"] = wp_clamped
+                doc["truncated"] = True
+                doc["original_dimensions"] = rp_info["original_dimensions"]
         return doc
 
     merged = await _build_merged(sr, db)
@@ -78,7 +97,12 @@ async def _get_or_init_working(db, sr_id: str, label_name: str) -> dict:
             rp = full.get("values") if full else None
         elif entry["type"] == "map":
             full = next((p for p in dcm.get("maps", []) if p["name"] == label_name), None)
-            rp = full.get("values") if full else None
+            if full:
+                raw_vals = full.get("values")
+                if raw_vals and is_2d_matrix(raw_vals):
+                    rp, _, _, _ = clamp_matrix(raw_vals)
+                else:
+                    rp = raw_vals
 
     new_doc = {
         "sw_release_id": sr_id_str,
@@ -259,7 +283,21 @@ async def update_values(
         raise HTTPException(400, f"Operation '{body.operation}' requires 'value'")
 
     doc = await _get_or_init_working(db, sr_id, label_name)
+
+    # Guard: reject if stored wp_value already exceeds 16×16 (should not happen post-1d)
+    if is_2d_matrix(doc.get("wp_value")):
+        rows = len(doc["wp_value"])
+        cols = len(doc["wp_value"][0]) if rows else 0
+        if rows > MAX_MAP_DIM or cols > MAX_MAP_DIM:
+            raise HTTPException(422, f"Map exceeds {MAX_MAP_DIM}×{MAX_MAP_DIM} limit ({rows}×{cols}). Re-initialize the label to clamp.")
+
     new_wp = _apply_operation(doc["wp_value"], body.operation, body)
+
+    # Reject if operation somehow produced oversized result
+    if is_2d_matrix(new_wp):
+        nr, nc = len(new_wp), (len(new_wp[0]) if new_wp else 0)
+        if nr > MAX_MAP_DIM or nc > MAX_MAP_DIM:
+            raise HTTPException(422, f"Result would exceed {MAX_MAP_DIM}×{MAX_MAP_DIM} limit ({nr}×{nc})")
 
     # Validate against A2L limits
     from routers.labels import _build_merged, _require_sr as _req_sr
@@ -293,6 +331,9 @@ async def update_values(
             "$push": {"edit_history": history_entry},
         },
     )
+
+    from routers.labels import _invalidate_merged_cache
+    _invalidate_merged_cache(doc["sw_release_id"])
 
     await db.audit_log.insert_one({
         "ts":             _now(),
@@ -362,6 +403,8 @@ async def reset_values(
             }},
         },
     )
+    from routers.labels import _invalidate_merged_cache
+    _invalidate_merged_cache(doc["sw_release_id"])
     return {"wp_value": new_wp, "modified": is_modified}
 
 
