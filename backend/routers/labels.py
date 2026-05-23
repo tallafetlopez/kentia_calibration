@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import sys
 import tempfile
@@ -34,6 +35,7 @@ if str(_PARSERS_DIR) not in sys.path:
 from parsers.a2l_parser import A2lParser          # noqa: E402
 from parsers.dcm_parser import DCMParser          # noqa: E402
 from parsers.dcm_writer import write_dcm          # noqa: E402
+from utils.map_limits import clamp_matrix         # noqa: E402
 
 router = APIRouter(tags=["Labels"])
 
@@ -71,6 +73,35 @@ async def _require_sr(sr_id: str, db):
 _a2l_cache: dict[str, tuple[float, object]] = {}
 _dcm_cache: dict[str, tuple[float, object]] = {}
 
+# ─── _build_merged result cache (sr_id → (signature, labels)) ────────────────
+
+_merged_cache: dict[str, tuple[str, list[dict]]] = {}
+
+
+def _merged_signature(sr: dict, meta_version: str, working_version: str) -> str:
+    a2l_path = sr.get("a2l_path") or ""
+    dcm_path = sr.get("dcm_path") or ""
+    a2l_mtime = str(Path(a2l_path).stat().st_mtime) if a2l_path and Path(a2l_path).exists() else ""
+    dcm_mtime = str(Path(dcm_path).stat().st_mtime) if dcm_path and Path(dcm_path).exists() else ""
+    parts = [a2l_path, dcm_path, a2l_mtime, dcm_mtime, meta_version, working_version]
+    return hashlib.md5("|".join(parts).encode()).hexdigest()
+
+
+async def _collection_version(db, collection_name: str, sr_id: str) -> str:
+    coll = db[collection_name]
+    count = await coll.count_documents({"sw_release_id": sr_id})
+    latest = await coll.find_one(
+        {"sw_release_id": sr_id},
+        sort=[("updated_at", -1)],
+        projection={"updated_at": 1},
+    )
+    last_ts = str((latest or {}).get("updated_at", "")) if latest else ""
+    return f"{count}:{last_ts}"
+
+
+def _invalidate_merged_cache(sr_id: str) -> None:
+    _merged_cache.pop(sr_id, None)
+
 
 def _cached_parse_a2l(path: str):
     mtime = Path(path).stat().st_mtime
@@ -96,8 +127,17 @@ async def _build_merged(sr: dict, db) -> list[dict]:
     """
     Parse A2L + DCM files for the given SW Release, merge by label name,
     enrich with DB metadata, and return a flat list sorted by name.
+    Result is cached by content signature; invalidate with _invalidate_merged_cache.
     """
     sr_id = str(sr["_id"])
+
+    meta_version    = await _collection_version(db, "label_metadata",       sr_id)
+    working_version = await _collection_version(db, "label_working_values", sr_id)
+    sig = _merged_signature(sr, meta_version, working_version)
+
+    cached = _merged_cache.get(sr_id)
+    if cached and cached[0] == sig:
+        return cached[1]
 
     # ── 1. Parse A2L ──────────────────────────────────────────────────────────
     a2l_chars: dict = {}
@@ -163,6 +203,8 @@ async def _build_merged(sr: dict, db) -> list[dict]:
             value_preview = f"[{dcm_c.get('size', '?')}d]"
         elif ptype == "map" and dcm_m:
             value_preview = f"[{dcm_m.get('rows','?')}×{dcm_m.get('cols','?')}]"
+            if dcm_m.get("truncated"):
+                value_preview += " (clamped)"
         else:
             value_preview = None
 
@@ -236,6 +278,8 @@ async def _build_merged(sr: dict, db) -> list[dict]:
             "save":                meta.get("save",         False),
             "default_value_a2l":   default_value_a2l,
             "needs_default_assignment": (in_a2l and not in_dcm),
+            "truncated":           bool(dcm_m and dcm_m.get("truncated")),
+            "original_dimensions": (dcm_m or {}).get("original_dimensions"),
         })
 
     # Enrich with modified_wp flag from working values collection
@@ -249,6 +293,7 @@ async def _build_merged(sr: dict, db) -> list[dict]:
     for label in labels:
         label["modified_wp"] = label["name"] in working_modified
 
+    _merged_cache[sr_id] = (sig, labels)
     return labels
 
 
@@ -406,6 +451,23 @@ async def get_label_detail(
         )
     )
 
+    # Defensive: clamp map values in case parser cache was bypassed
+    detail_values = dcm_detail.get("values")
+    detail_x = dcm_detail.get("x_axis")
+    detail_y = dcm_detail.get("y_axis")
+    detail_truncated = dcm_detail.get("truncated", False)
+    detail_orig_dims = dcm_detail.get("original_dimensions")
+    if ptype == "map" and detail_values:
+        clamped_v, clamped_x, clamped_y, clamp_info = clamp_matrix(
+            detail_values, detail_x, detail_y
+        )
+        detail_values = clamped_v
+        detail_x = clamped_x
+        detail_y = clamped_y
+        if clamp_info:
+            detail_truncated = True
+            detail_orig_dims = clamp_info["original_dimensions"]
+
     return {
         "name":             label_name,
         "long_identifier":  (a2l_char.description if a2l_char else dcm_detail.get("long_name", "")),
@@ -418,14 +480,16 @@ async def get_label_detail(
         "upper_limit":      a2l_char.upper_limit if a2l_char else None,
         "function":         a2l_char.function    if a2l_char else "",
         "address":          hex(a2l_char.ecu_address) if a2l_char else None,
-        # DCM values
-        "value":            dcm_detail.get("value"),
-        "x_axis":           dcm_detail.get("x_axis"),
-        "y_axis":           dcm_detail.get("y_axis"),
-        "values":           dcm_detail.get("values"),
-        "size":             dcm_detail.get("size"),
-        "rows":             dcm_detail.get("rows"),
-        "cols":             dcm_detail.get("cols"),
+        # DCM values (maps already clamped above)
+        "value":               dcm_detail.get("value"),
+        "x_axis":              detail_x,
+        "y_axis":              detail_y,
+        "values":              detail_values,
+        "size":                dcm_detail.get("size"),
+        "rows":                len(detail_values) if detail_values else dcm_detail.get("rows"),
+        "cols":                len(detail_values[0]) if detail_values and detail_values else dcm_detail.get("cols"),
+        "truncated":           detail_truncated,
+        "original_dimensions": detail_orig_dims,
         # Flags
         "in_a2l":           a2l_char is not None,
         "in_dcm":           bool(dcm_detail),
@@ -465,6 +529,7 @@ async def update_label_metadata(
         {"$set": update_fields, "$setOnInsert": {"sw_release_id": sr_id_str, "label_name": label_name, "created_at": _now_iso()}},
         upsert=True,
     )
+    _invalidate_merged_cache(sr_id_str)
     return {"ok": True}
 
 
@@ -506,6 +571,7 @@ async def update_label_maturity(
         },
         upsert=True,
     )
+    _invalidate_merged_cache(sr_id_str)
     return {"ok": True, "score": body.score}
 
 
