@@ -90,7 +90,6 @@ async def on_startup():
     await db.labels.create_index("owner")
     await db.labels.create_index("maturity")
     await db.work_packages.create_index([("code", 1), ("ecu_id", 1)], unique=True)
-    await db.label_metadata.create_index([("sw_release_id", 1), ("label_name", 1)], unique=True)
     await db.audit_log.create_index("date")
     await ensure_indexes(db)
 
