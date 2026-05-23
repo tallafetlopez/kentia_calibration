@@ -10,9 +10,21 @@ Supported block types:
 """
 
 from __future__ import annotations
+import logging
 import re
+import sys
 from pathlib import Path
 from typing import Union
+
+_PARSERS_DIR = Path(__file__).parent
+_BACKEND_DIR = _PARSERS_DIR.parent
+for _d in (str(_PARSERS_DIR), str(_BACKEND_DIR)):
+    if _d not in sys.path:
+        sys.path.insert(0, _d)
+
+from utils.map_limits import clamp_matrix, MAX_MAP_DIM  # noqa: E402
+
+_log = logging.getLogger(__name__)
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -241,6 +253,33 @@ class DCMParser:
                 continue
 
             i += 1
+
+        # Clamp all maps to MAX_MAP_DIM × MAX_MAP_DIM
+        for m in maps:
+            clamped, cx, cy, info = clamp_matrix(
+                m.get("values", []),
+                m.get("x_axis"),
+                m.get("y_axis"),
+            )
+            m["values"] = clamped
+            if cx is not None:
+                m["x_axis"] = cx
+            if cy is not None:
+                m["y_axis"] = cy
+            if info:
+                m["truncated"] = True
+                m["original_dimensions"] = info["original_dimensions"]
+                _log.warning(
+                    "Map %s truncated from %dx%d to %dx%d",
+                    m.get("name", "?"),
+                    info["original_dimensions"]["rows"],
+                    info["original_dimensions"]["cols"],
+                    len(clamped),
+                    len(clamped[0]) if clamped else 0,
+                )
+            # Keep rows/cols consistent with clamped size
+            m["rows"] = len(clamped)
+            m["cols"] = len(clamped[0]) if clamped else 0
 
         return {
             "metadata": metadata,
