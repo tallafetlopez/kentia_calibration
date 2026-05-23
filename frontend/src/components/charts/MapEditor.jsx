@@ -1,7 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
-import Plot from "../../lib/Plot";
+
+const Plot = lazy(() => import("../../lib/Plot"));
+const ChartFallback = (
+  <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded text-xs text-gray-400">
+    Loading chart engine…
+  </div>
+);
 
 const COLORSCALE = [
   [0.0,  "rgb(20, 68, 84)"],
@@ -190,6 +196,7 @@ export default function MapEditor({ swReleaseId, label, onChange }) {
 
       {viewMode === "heatmap" && (
         <div className="border border-gray-200 rounded bg-white">
+          <Suspense fallback={ChartFallback}>
           <Plot
             data={[{
               type: "heatmap",
@@ -210,6 +217,7 @@ export default function MapEditor({ swReleaseId, label, onChange }) {
             style={{ width: "100%" }}
             useResizeHandler
           />
+          </Suspense>
           <p className="text-[10px] text-gray-500 italic p-2 border-t border-gray-100">
             Switch to Table view to select cells and edit.
           </p>
@@ -218,6 +226,7 @@ export default function MapEditor({ swReleaseId, label, onChange }) {
 
       {viewMode === "3d" && (
         <div className="border border-gray-200 rounded bg-white">
+          <Suspense fallback={ChartFallback}>
           <Plot
             data={[{
               type: "surface",
@@ -242,6 +251,7 @@ export default function MapEditor({ swReleaseId, label, onChange }) {
             style={{ width: "100%" }}
             useResizeHandler
           />
+          </Suspense>
         </div>
       )}
 

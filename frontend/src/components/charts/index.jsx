@@ -1,5 +1,18 @@
-import React, { useState } from "react";
-import Plot from "../../lib/Plot";
+import React, { lazy, Suspense, useState } from "react";
+
+const Plot = lazy(() => import("../../lib/Plot"));
+
+function ChartShell({ children }) {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-48 bg-gray-50 border border-gray-200 rounded text-xs text-gray-400">
+        Loading chart engine…
+      </div>
+    }>
+      {children}
+    </Suspense>
+  );
+}
 
 const COLORSCALE = [
   [0,    "rgb(20,68,84)"],
@@ -59,7 +72,7 @@ export function ScalarChart({ label }) {
 
   return (
     <div className="p-3 flex flex-col gap-3">
-      <Plot data={data} layout={layout} config={CONFIG} style={{ width: "100%" }} />
+      <ChartShell><Plot data={data} layout={layout} config={CONFIG} style={{ width: "100%" }} /></ChartShell>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-gray-50 rounded p-2 border border-gray-100">
           <span className="text-gray-400">Lower limit </span>
@@ -145,7 +158,7 @@ export function CurveChart({ param, compareParam }) {
 
   return (
     <div className="p-3">
-      <Plot data={traces} layout={layout} config={CONFIG} style={{ width: "100%" }} />
+      <ChartShell><Plot data={traces} layout={layout} config={CONFIG} style={{ width: "100%" }} /></ChartShell>
     </div>
   );
 }
@@ -253,10 +266,12 @@ export function MapChart({ param }) {
           Map truncated to {MAX_MAP_DIM}×{MAX_MAP_DIM} (max display size).
         </p>
       )}
-      {mode === "heatmap"
-        ? <Plot data={[heatmapTrace]} layout={heatmapLayout} config={CONFIG} style={{ width: "100%" }} />
-        : <Plot data={[surfaceTrace]} layout={surfaceLayout} config={{ ...CONFIG, displayModeBar: true, modeBarButtonsToRemove: ["sendDataToCloud", "toImage"] }} style={{ width: "100%" }} />
-      }
+      <ChartShell>
+        {mode === "heatmap"
+          ? <Plot data={[heatmapTrace]} layout={heatmapLayout} config={CONFIG} style={{ width: "100%" }} />
+          : <Plot data={[surfaceTrace]} layout={surfaceLayout} config={{ ...CONFIG, displayModeBar: true, modeBarButtonsToRemove: ["sendDataToCloud", "toImage"] }} style={{ width: "100%" }} />
+        }
+      </ChartShell>
     </div>
   );
 }

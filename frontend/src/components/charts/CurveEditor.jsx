@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { lazy, Suspense, useState, useEffect } from "react";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
-import Plot from "../../lib/Plot";
+
+const Plot = lazy(() => import("../../lib/Plot"));
+const ChartFallback = (
+  <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded text-xs text-gray-400">
+    Loading chart engine…
+  </div>
+);
 
 const FONT_FAMILY = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
@@ -102,6 +108,7 @@ export default function CurveEditor({ swReleaseId, label, onChange }) {
   return (
     <div className="p-3 space-y-3">
       <div className="border border-gray-200 rounded bg-white">
+        <Suspense fallback={ChartFallback}>
         <Plot
           data={plotData}
           layout={{
@@ -119,6 +126,7 @@ export default function CurveEditor({ swReleaseId, label, onChange }) {
           style={{ width: "100%" }}
           useResizeHandler
         />
+        </Suspense>
       </div>
 
       <div className="border border-gray-200 rounded">

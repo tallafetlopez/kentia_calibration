@@ -1,12 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { toast } from "sonner";
-import { ScalarChart, CurveChart, MapChart } from "../components/charts";
-import ScalarEditor from "../components/charts/ScalarEditor";
-import CurveEditor  from "../components/charts/CurveEditor";
-import MapEditor    from "../components/charts/MapEditor";
-import HistoryTab   from "../components/charts/HistoryTab";
+
+const ScalarChart  = lazy(() => import("../components/charts").then(m => ({ default: m.ScalarChart })));
+const CurveChart   = lazy(() => import("../components/charts").then(m => ({ default: m.CurveChart })));
+const MapChart     = lazy(() => import("../components/charts").then(m => ({ default: m.MapChart })));
+const ScalarEditor = lazy(() => import("../components/charts/ScalarEditor"));
+const CurveEditor  = lazy(() => import("../components/charts/CurveEditor"));
+const MapEditor    = lazy(() => import("../components/charts/MapEditor"));
+const HistoryTab   = lazy(() => import("../components/charts/HistoryTab"));
+
+const PanelFallback = (
+  <div className="flex items-center justify-center h-48 text-xs text-gray-400">Loading…</div>
+);
 
 function fmt(v) {
   const n = Number(v);
@@ -416,7 +423,7 @@ function CompareTab({ label, baseValue, baseSrId }) {
   }
 
   if (type === "curve") {
-    return <CurveChart param={label} compareParam={baseDetail} />;
+    return <Suspense fallback={PanelFallback}><CurveChart param={label} compareParam={baseDetail} /></Suspense>;
   }
 
   if (type === "map") {
@@ -525,21 +532,27 @@ function ChartPanel({ param, loading, onClose, onSaveMeta, onSaveMaturity, compa
           </div>
         )}
         {!loading && param && tab === "edit" && swReleaseId && (
-          type === "curve" ? <CurveEditor  key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} /> :
-          type === "map"   ? <MapEditor    key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} /> :
-                             <ScalarEditor key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} />
+          <Suspense fallback={PanelFallback}>
+            {type === "curve" ? <CurveEditor  key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} /> :
+             type === "map"   ? <MapEditor    key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} /> :
+                                <ScalarEditor key={`${param.name}-${reloadKey}`} swReleaseId={swReleaseId} label={param} onChange={() => { setReloadKey(k => k + 1); onWpChange?.(); }} />}
+          </Suspense>
         )}
         {!loading && param && tab === "chart" && (
-          type === "curve" ? <CurveChart param={param} /> :
-          type === "map"   ? <MapChart param={param} />   :
-                             <ScalarChart label={param} />
+          <Suspense fallback={PanelFallback}>
+            {type === "curve" ? <CurveChart param={param} /> :
+             type === "map"   ? <MapChart param={param} />   :
+                                <ScalarChart label={param} />}
+          </Suspense>
         )}
         {!loading && param && tab === "data"     && <DataTab label={param} />}
         {!loading && param && tab === "compare"  && <CompareTab label={param} baseValue={baseValue} baseSrId={baseSrId} />}
         {!loading && param && tab === "maturity" && <MaturityTab label={param} onSaveMaturity={onSaveMaturity} />}
         {!loading && param && tab === "info"     && <InfoTab label={param} onSaveMeta={onSaveMeta} />}
         {!loading && param && tab === "history"  && swReleaseId && (
-          <HistoryTab swReleaseId={swReleaseId} labelName={param.name} />
+          <Suspense fallback={PanelFallback}>
+            <HistoryTab swReleaseId={swReleaseId} labelName={param.name} />
+          </Suspense>
         )}
       </div>
     </div>
