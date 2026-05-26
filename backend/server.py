@@ -1180,5 +1180,12 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+    # Windowed (console=False) frozen exe has no console handles — redirect to log file.
+    if getattr(sys, "frozen", False) and sys.stdout is None:
+        from resource_path import app_data_dir
+        _log_path = app_data_dir() / "server.log"
+        _log_file = open(_log_path, "a", buffering=1, encoding="utf-8")
+        sys.stdout = _log_file
+        sys.stderr = _log_file
     _port = int(os.environ.get("HERKO_API_PORT", 8765))
     uvicorn.run(app, host="127.0.0.1", port=_port, log_level="info")
