@@ -768,7 +768,7 @@ export default function SwReleaseLabelViewer({ id: propId } = {}) {
   };
 
   // ── Phase 5 handlers ─────────────────────────────────────────────────────────
-  const exportCSV = () => {
+  const exportCSV = async () => {
     const headers = ["Name","Type","System Status","Maturity","Value or Dim","Owner","Deputy","Function","User Status","Comment","In A2L","In DCM","Out of Range"];
     const rows = filtered.map(l => [
       l.name, l.type, l.system_status, l.maturity_score ?? 0,
@@ -779,12 +779,8 @@ export default function SwReleaseLabelViewer({ id: propId } = {}) {
     const csv = [headers, ...rows]
       .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `labels_${id}_${new Date().toISOString().slice(0,10)}.csv`; a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${filtered.length} labels to CSV`);
+    const filename = `labels_${id}_${new Date().toISOString().slice(0,10)}.csv`;
+    await triggerDownload(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }), filename);
   };
 
   const toggleSave = async (label) => {
@@ -830,11 +826,10 @@ export default function SwReleaseLabelViewer({ id: propId } = {}) {
         filename:      exportFilters.filename || undefined,
       };
       const resp = await api.post(`/v1/sw-releases/${id}/labels/export-dcm`, body, { responseType: "blob" });
-      triggerDownload(
+      await triggerDownload(
         new Blob([resp.data], { type: "application/octet-stream" }),
         exportFilters.filename || `export_${new Date().toISOString().slice(0, 10)}.dcm`
       );
-      toast.success("DCM exported");
       setShowExportDcmModal(false);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Export failed");
