@@ -50,7 +50,7 @@ export default function AuthErrorFallback({ error, onRetry }) {
 
         {/* Help Text */}
         <p className="text-xs text-gray-500 mt-4 text-center">
-          Make sure the backend is running at <code>localhost:8000</code>
+          Make sure the backend is running at <code>{process.env.REACT_APP_BACKEND_URL}</code>
         </p>
       </div>
     </div>

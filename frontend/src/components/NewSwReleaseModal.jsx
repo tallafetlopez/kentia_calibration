@@ -84,7 +84,7 @@ const NewSwReleaseModal = ({ isOpen, onClose, onSuccess }) => {
         a2l_filename: formData.a2l_filename || null,
       };
 
-      await axios.post('http://localhost:8000/api/v1/sw-releases', payload);
+      await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/v1/sw-releases`, payload);
 
       // Reset form
       setFormData({

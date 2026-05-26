@@ -30,7 +30,7 @@ const GenerateVehicleSwIdModal = ({ isOpen, onClose, onSuccess }) => {
   const loadDatasets = async () => {
     try {
       const response = await axios.get(
-        'http://localhost:8000/api/v1/datasets?state=RELEASE_CANDIDATE&state=RELEASED'
+        `${process.env.REACT_APP_BACKEND_URL}/api/v1/datasets?state=RELEASE_CANDIDATE&state=RELEASED`
       );
       setDatasets(response.data);
     } catch (error) {
@@ -88,7 +88,7 @@ const GenerateVehicleSwIdModal = ({ isOpen, onClose, onSuccess }) => {
       };
 
       const response = await axios.post(
-        'http://localhost:8000/api/v1/vehicle-sw-ids/generate',
+        `${process.env.REACT_APP_BACKEND_URL}/api/v1/vehicle-sw-ids/generate`,
         payload
       );
 

@@ -30,7 +30,7 @@ const NewDatasetModal = ({ isOpen, onClose, onSuccess, currentUser }) => {
   const loadSwReleases = async () => {
     try {
       const response = await axios.get(
-        'http://localhost:8000/api/v1/sw-releases?status=VALID_FOR_CALIBRATION'
+        `${process.env.REACT_APP_BACKEND_URL}/api/v1/sw-releases?status=VALID_FOR_CALIBRATION`
       );
       setSwReleases(response.data);
     } catch (error) {
@@ -93,7 +93,7 @@ const NewDatasetModal = ({ isOpen, onClose, onSuccess, currentUser }) => {
         author: formData.author,
       };
 
-      await axios.post('http://localhost:8000/api/v1/datasets', payload);
+      await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/v1/datasets`, payload);
 
       // Reset form
       setFormData({

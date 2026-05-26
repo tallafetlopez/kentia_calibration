@@ -64,7 +64,7 @@ const DatasetStateTransitionButton = ({ datasetId, currentState, onTransitionSuc
 
     try {
       await axios.post(
-        `http://localhost:8000/api/v1/datasets/${datasetId}/transition`,
+        `${process.env.REACT_APP_BACKEND_URL}/api/v1/datasets/${datasetId}/transition`,
         { to_state: nextState }
       );
 
