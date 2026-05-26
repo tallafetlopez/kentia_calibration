@@ -150,18 +150,34 @@ async def delete_sw_release(
     db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_user),
 ):
-    """Soft delete an SW Release by setting status to DEPRECATED."""
+    """Hard delete an SW Release and associated files."""
+    from pathlib import Path
+
     try:
         oid = ObjectId(release_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid release ID format")
 
-    result = await db.sw_releases.update_one(
-        {"_id": oid},
-        {"$set": {"status": "DEPRECATED"}}
-    )
-    if result.matched_count == 0:
+    doc = await db.sw_releases.find_one({"_id": oid})
+    if not doc:
         raise HTTPException(status_code=404, detail="SW Release not found")
+
+    # Delete uploaded files from disk
+    for field in ("a2l_path", "dcm_path"):
+        if doc.get(field):
+            try:
+                Path(doc[field]).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    # Hard delete from v1 collection
+    await db.sw_releases.delete_one({"_id": oid})
+
+    # Also remove from legacy collection by identifier+version
+    await db.software_releases.delete_many({
+        "software_release_identifier": doc.get("identifier"),
+        "version": doc.get("version"),
+    })
 
 
 # ── Chart / Overview endpoints ────────────────────────────────────────────────

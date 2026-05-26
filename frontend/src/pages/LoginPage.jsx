@@ -26,7 +26,7 @@ export default function LoginPage() {
         detail != null
           ? formatApiErrorDetail(detail)
           : e?.code === "ERR_NETWORK"
-            ? "Cannot connect to backend. Verify API is running on http://localhost:8000."
+            ? "Cannot connect to backend. Verify API is running on http://localhost:8001."
             : e?.message || "Login failed. Please check your credentials and try again.";
       setErr(errorMsg);
     } finally {

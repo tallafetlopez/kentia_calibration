@@ -867,6 +867,32 @@ export default function SwReleaseLabelViewer({ id: propId } = {}) {
     }
   };
 
+  const deleteA2L = async () => {
+    if (!window.confirm("Remove A2L file from this release?")) return;
+    try {
+      await api.delete(`/v1/sw-releases/${id}/a2l`);
+      toast.success("A2L removed");
+      setReloadKey(k => k + 1);
+      const r = await api.get(`/v1/sw-releases/${id}`);
+      setSwReleaseInfo(r.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to remove A2L");
+    }
+  };
+
+  const deleteDCM = async () => {
+    if (!window.confirm("Remove DCM file from this release?")) return;
+    try {
+      await api.delete(`/v1/sw-releases/${id}/dcm`);
+      toast.success("DCM removed");
+      setReloadKey(k => k + 1);
+      const r = await api.get(`/v1/sw-releases/${id}`);
+      setSwReleaseInfo(r.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to remove DCM");
+    }
+  };
+
   const uploadDCM = async (file) => {
     if (!file) return;
     setUploadingDcm(true);
@@ -933,11 +959,41 @@ export default function SwReleaseLabelViewer({ id: propId } = {}) {
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-gray-400 truncate">
+            <p className="text-[10px] text-gray-400 flex items-center gap-1 flex-wrap">
+              <input ref={a2lUploadRef} type="file" accept=".a2l,.A2L" style={{ display: "none" }}
+                onChange={e => { uploadA2L(e.target.files?.[0]); e.target.value = ""; }} />
+              <input ref={dcmUploadRef} type="file" accept=".dcm,.DCM" style={{ display: "none" }}
+                onChange={e => { uploadDCM(e.target.files?.[0]); e.target.value = ""; }} />
               {swReleaseInfo?.supplier ? `${swReleaseInfo.supplier} · ` : ""}
-              A2L: {swReleaseInfo?.a2l_filename ? "loaded" : "not uploaded"}
+              A2L: {swReleaseInfo?.a2l_filename ? (
+                <span className="inline-flex items-center gap-1">
+                  {swReleaseInfo.a2l_filename}
+                  <button onClick={deleteA2L} title="Remove A2L"
+                    className="text-red-500 hover:text-red-700 font-bold leading-none"
+                    style={{ fontSize: 11 }}>×</button>
+                </span>
+              ) : (
+                <button onClick={() => a2lUploadRef.current?.click()} disabled={uploadingA2l}
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-semibold"
+                  style={{ fontSize: 10 }}>
+                  {uploadingA2l ? "uploading…" : "+ upload"}
+                </button>
+              )}
               {" · "}
-              DCM: {swReleaseInfo?.dcm_filename ? "loaded" : "not uploaded"}
+              DCM: {swReleaseInfo?.dcm_filename ? (
+                <span className="inline-flex items-center gap-1">
+                  {swReleaseInfo.dcm_filename}
+                  <button onClick={deleteDCM} title="Remove DCM"
+                    className="text-red-500 hover:text-red-700 font-bold leading-none"
+                    style={{ fontSize: 11 }}>×</button>
+                </span>
+              ) : (
+                <button onClick={() => dcmUploadRef.current?.click()} disabled={uploadingDcm}
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-semibold"
+                  style={{ fontSize: 10 }}>
+                  {uploadingDcm ? "uploading…" : "+ upload"}
+                </button>
+              )}
             </p>
           </div>
         </div>

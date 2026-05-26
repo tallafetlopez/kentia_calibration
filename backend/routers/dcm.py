@@ -142,6 +142,24 @@ async def upload_dcm(
     )
 
 
+@router.delete("/sw-releases/{sr_id}/dcm", status_code=204)
+async def delete_dcm(
+    sr_id: str,
+    user: dict = Depends(get_current_user),
+):
+    db = await get_db()
+    sr = await _require_sr(sr_id, db)
+    if sr.get("dcm_path"):
+        try:
+            Path(sr["dcm_path"]).unlink(missing_ok=True)
+        except Exception:
+            pass
+    await db.sw_releases.update_one(
+        {"_id": ObjectId(sr_id)},
+        {"$unset": {"dcm_filename": "", "dcm_path": "", "dcm_uploaded_at": "", "dcm_summary": ""}},
+    )
+
+
 @router.get("/sw-releases/{sr_id}/dcm/summary", response_model=DCMSummaryResponse)
 async def get_dcm_summary(
     sr_id: str,

@@ -67,6 +67,32 @@ export default function SoftwareReleasesPage() {
     }
   };
 
+  const deleteRelease = async (e, r) => {
+    e.stopPropagation();
+    if (!window.confirm(`DELETE "${r.software_release_identifier} v${r.version}"?\n\nThis action is IRREVERSIBLE — the release and all uploaded files will be permanently removed.`)) return;
+    try {
+      let v1Id = null;
+      try {
+        await api.get(`/v1/sw-releases/${r.id}`);
+        v1Id = r.id;
+      } catch {
+        const { data: v1List } = await api.get("/v1/sw-releases");
+        const v1 = (v1List || []).find(x => x.identifier === r.software_release_identifier && x.version === r.version);
+        if (v1) v1Id = v1._id || v1.id;
+      }
+      if (v1Id) {
+        await api.delete(`/v1/sw-releases/${v1Id}`);
+      } else {
+        await api.delete(`/software-releases/${r.id}`);
+      }
+      if (selectedId === v1Id) setSelectedId(null);
+      toast.success("Release deleted");
+      await load();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e) || "Failed to delete release");
+    }
+  };
+
   useEffect(() => { api.get("/ecus").then((r) => { setEcus(r.data); if (r.data[0]) setForm((f) => ({ ...f, ecu_id: r.data[0].id })); }); }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -199,8 +225,9 @@ export default function SoftwareReleasesPage() {
                     type="button"
                     onClick={() => a2lInputRef.current?.click()}
                     className="ms-btn"
-                    style={{ width: "100%", justifyContent: "flex-start", marginTop: 6 }}
+                    style={{ width: "100%", justifyContent: "flex-start", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}
                     data-testid="new-release-a2l"
+                    title={a2lFile ? a2lFile.name : ""}
                   >
                     {a2lFile ? a2lFile.name : "Select A2L file..."}
                   </button>
@@ -224,7 +251,8 @@ export default function SoftwareReleasesPage() {
                     type="button"
                     onClick={() => dcmInputRef.current?.click()}
                     className="ms-btn"
-                    style={{ width: "100%", justifyContent: "flex-start", marginTop: 6 }}
+                    style={{ width: "100%", justifyContent: "flex-start", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}
+                    title={dcmFile ? dcmFile.name : ""}
                   >
                     {dcmFile ? dcmFile.name : "Select DCM file..."}
                   </button>
@@ -273,7 +301,7 @@ export default function SoftwareReleasesPage() {
       </div>
 
       {/* Table */}
-      <div className="panel" style={{ overflow: "hidden" }}>
+      <div className="panel" style={{ overflowX: "auto" }}>
         <table className="xl-table">
           <thead>
             <tr>
@@ -291,7 +319,19 @@ export default function SoftwareReleasesPage() {
               <tr key={r.id} data-testid={`sr-row-${r.software_release_identifier}`}
                 style={{ cursor: "pointer", background: selectedId === r.id ? "#EFF6FF" : undefined }}
                 onClick={() => openRelease(r)}>
-                <td style={{ fontWeight: 600 }}>{r.software_release_identifier}</td>
+                <td style={{ fontWeight: 600 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>{r.software_release_identifier}</span>
+                    <button
+                      onClick={e => deleteRelease(e, r)}
+                      style={{ fontSize: 10, color: "#C0392B", fontWeight: 700, background: "none", border: "1px solid #C0392B", borderRadius: 3, cursor: "pointer", padding: "0px 4px", lineHeight: "16px", flexShrink: 0 }}
+                      data-testid={`sr-delete-${r.software_release_identifier}`}
+                      title="Delete release permanently"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </td>
                 <td style={{ fontFamily: "monospace" }}>{r.version}</td>
                 <td>{r.supplier || "—"}</td>
                 <td>

@@ -255,7 +255,7 @@ export default function MapEditor({ swReleaseId, label, onChange }) {
         </div>
       )}
 
-      <div className="border border-gray-200 rounded p-3 bg-gray-50">
+      {viewMode === "table" && <div className="border border-gray-200 rounded p-3 bg-gray-50">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] font-semibold text-gray-700 uppercase">
             Selection: {selectedCells.size} cell{selectedCells.size !== 1 ? "s" : ""}
@@ -315,7 +315,7 @@ export default function MapEditor({ swReleaseId, label, onChange }) {
         <p className="text-[10px] text-gray-500 italic mt-2">
           Click to select · Ctrl+Click multi-select · Shift+Click range. Interpolate needs ≥4 corners. Reset without selection resets whole map.
         </p>
-      </div>
+      </div>}
     </div>
   );
 }

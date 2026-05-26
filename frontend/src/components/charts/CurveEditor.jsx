@@ -140,7 +140,7 @@ export default function CurveEditor({ swReleaseId, label, onChange }) {
         </div>
         <div className="max-h-48 overflow-y-auto">
           <table className="w-full text-[11px]">
-            <thead className="bg-gray-50 sticky top-0">
+            <thead className="bg-gray-50">
               <tr>
                 <th className="px-2 py-1 text-left text-gray-500 w-12">#</th>
                 <th className="px-2 py-1 text-left text-gray-500 w-24">{label.unit_x || "X"}</th>

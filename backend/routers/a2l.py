@@ -207,6 +207,26 @@ async def upload_a2l(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
+@router.delete("/{sr_id}/a2l", status_code=204)
+async def delete_a2l(
+    sr_id: str,
+    user: dict = Depends(get_current_user),
+):
+    db = await get_db()
+    sr = await db.sw_releases.find_one({"_id": ObjectId(sr_id)})
+    if not sr:
+        raise HTTPException(status_code=404, detail="SW Release not found")
+    if sr.get("a2l_path"):
+        try:
+            Path(sr["a2l_path"]).unlink(missing_ok=True)
+        except Exception:
+            pass
+    await db.sw_releases.update_one(
+        {"_id": ObjectId(sr_id)},
+        {"$unset": {"a2l_filename": "", "a2l_path": "", "a2l_uploaded_at": ""}},
+    )
+
+
 @router.get("/{sr_id}/a2l/parse")
 async def parse_a2l(
     sr_id: str,
