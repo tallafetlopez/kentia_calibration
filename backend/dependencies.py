@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from bson import ObjectId
+import aiosqlite
 from fastapi import HTTPException, Request
-from motor.motor_asyncio import AsyncIOMotorDatabase
+
+from db import get_conn, fetch_one
 
 
-async def get_db() -> AsyncIOMotorDatabase:
-    from server import db
-    return db
+async def get_db() -> aiosqlite.Connection:
+    return get_conn()
 
 
-async def get_current_user(request: Request):
+async def get_current_user(request: Request) -> dict:
     from auth_utils import get_current_user as _get
-    from server import db
+    db = get_conn()
     return await _get(request, db)
 
 
@@ -24,12 +24,8 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def require_sr(sr_id: str, db: AsyncIOMotorDatabase):
-    try:
-        oid = ObjectId(sr_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid sw_release id")
-    sr = await db.sw_releases.find_one({"_id": oid})
+async def require_sr(sr_id: str, db: aiosqlite.Connection) -> dict:
+    sr = await fetch_one(db, "SELECT * FROM sw_releases WHERE id = ?", (sr_id,))
     if not sr:
         raise HTTPException(status_code=404, detail="SW Release not found")
     return sr
