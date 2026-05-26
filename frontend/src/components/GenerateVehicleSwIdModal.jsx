@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api as axios } from '../lib/api';
 
 const GenerateVehicleSwIdModal = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -30,7 +30,7 @@ const GenerateVehicleSwIdModal = ({ isOpen, onClose, onSuccess }) => {
   const loadDatasets = async () => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/api/v1/datasets?state=RELEASE_CANDIDATE&state=RELEASED`
+        `/v1/datasets?state=RELEASE_CANDIDATE&state=RELEASED`
       );
       setDatasets(response.data);
     } catch (error) {
@@ -88,7 +88,7 @@ const GenerateVehicleSwIdModal = ({ isOpen, onClose, onSuccess }) => {
       };
 
       const response = await axios.post(
-        `${process.env.REACT_APP_BACKEND_URL}/api/v1/vehicle-sw-ids/generate`,
+        `/v1/vehicle-sw-ids/generate`,
         payload
       );
 

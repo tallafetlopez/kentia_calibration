@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, triggerDownload } from "../lib/api";
 import { toast } from "sonner";
 
 export default function SwReleaseMerge() {
@@ -68,13 +68,7 @@ export default function SwReleaseMerge() {
         strategy,
         manual_resolutions: strategy === "manual" ? manualRes : null,
       }, { responseType: "blob" });
-      const blob = new Blob([resp.data], { type: "application/octet-stream" });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = `merged_${new Date().toISOString().slice(0, 10)}.dcm`;
-      a.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(new Blob([resp.data], { type: "application/octet-stream" }), `merged_${new Date().toISOString().slice(0, 10)}.dcm`);
       toast.success("Merged DCM downloaded");
     } catch (e) {
       toast.error("Merge export failed");

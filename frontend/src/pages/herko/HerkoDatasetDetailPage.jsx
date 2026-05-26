@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api } from '../../lib/api'
+import { api, triggerDownload } from '../../lib/api'
 import { LABEL_CONFIDENCE, LABEL_LEVELS } from '../../lib/constants.jsx'
 import { toast } from 'sonner'
 import Tabs from '../../components/herko/Tabs'
@@ -304,13 +304,7 @@ export default function HerkoDatasetDetailPage() {
                       ]),
                     ]
                     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-                    const blob = new Blob([csv], { type: 'text/csv' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `changelog_${dataset.dataset_name}_${new Date().toISOString().slice(0, 10)}.csv`
-                    a.click()
-                    URL.revokeObjectURL(url)
+                    triggerDownload(new Blob([csv], { type: 'text/csv' }), `changelog_${dataset.dataset_name}_${new Date().toISOString().slice(0, 10)}.csv`)
                   }}
                 >
                   Export CSV ↓

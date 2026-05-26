@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import axios from 'axios';
+import { api as axios } from '../lib/api';
 
 const NewSwReleaseModal = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -84,7 +84,7 @@ const NewSwReleaseModal = ({ isOpen, onClose, onSuccess }) => {
         a2l_filename: formData.a2l_filename || null,
       };
 
-      await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/v1/sw-releases`, payload);
+      await axios.post(`/v1/sw-releases`, payload);
 
       // Reset form
       setFormData({

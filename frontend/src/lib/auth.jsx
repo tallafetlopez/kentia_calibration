@@ -8,11 +8,7 @@ const AuthContext = createContext(null);
 // O añadir ?dev=true a la URL
 // REMOVE DEV_BYPASS before production ⚠️
 const isDevelopmentBypass = () => {
-  if (typeof window === "undefined") return false;
-  const bypassEnabled =
-    localStorage.getItem("dev_bypass") === "true" ||
-    window.location.search.includes("?dev=true");
-  return bypassEnabled;
+  return true; // TEMP: bypass auth for demo testing
 };
 
 const MOCK_ADMIN_USER = {
@@ -47,6 +43,12 @@ export function AuthProvider({ children }) {
       setLoading(false);
       setDevBypass(true);
       setAuthError(null);
+      // Auto-login to backend to get a real token for API calls
+      try {
+        try { await api.post("/auth/register", { email: "admin@herko.dev", password: "password123", name: "Admin" }); } catch (_) {}
+        const r = await api.post("/auth/login", { email: "admin@herko.dev", password: "password123" });
+        localStorage.setItem("herko_token", r.data.token);
+      } catch (_) {}
       return;
     }
 

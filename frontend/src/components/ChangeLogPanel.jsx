@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, triggerDownload } from "../lib/api";
 import { fmtDate } from "../lib/constants";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -61,13 +61,7 @@ export default function ChangeLogPanel({ datasets }) {
       e.author, e.previous_value ?? "", e.new_value ?? "", e.justification ?? "",
     ]);
     const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `calibration_change_log_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    triggerDownload(new Blob([csv], { type: "text/csv" }), `calibration_change_log_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   return (

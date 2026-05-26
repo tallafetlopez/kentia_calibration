@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../../lib/api'
+import { api, triggerDownload } from '../../lib/api'
 import { LABEL_CONFIDENCE, LABEL_LEVELS } from '../../lib/constants.jsx'
 import { toast } from 'sonner'
 import Button from '../../components/herko/Button'
@@ -211,12 +211,7 @@ export default function HerkoLabelsPage() {
       l.regulatory_relevance || '', l.maturity ?? '',
     ])
     const csv = [hdrs, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `labels_${new Date().toISOString().slice(0,10)}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    triggerDownload(new Blob([csv], { type: 'text/csv' }), `labels_${new Date().toISOString().slice(0,10)}.csv`)
   }
 
   // ── Edit label ────────────────────────────────────────────────────────────

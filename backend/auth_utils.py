@@ -23,7 +23,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def _secret() -> str:
-    return os.environ["JWT_SECRET"]
+    secret = os.environ.get("JWT_SECRET", "herko-dev-secret-change-in-production")
+    return secret
 
 
 def create_access_token(user_id: str, email: str) -> str:

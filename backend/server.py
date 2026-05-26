@@ -37,7 +37,7 @@ api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("herko")
 
-DISABLE_SEED = True
+DISABLE_SEED = os.environ.get("HERKO_DISABLE_SEED", "").lower() in ("1", "true", "yes")
 
 _LABEL_INSERT_SQL = """
     INSERT OR IGNORE INTO labels
@@ -127,6 +127,13 @@ async def log_audit(entity_type: str, entity_id: str, action: str, author: str,
 
 # ── Startup / Shutdown ────────────────────────────────────────────────────────
 
+ADMIN_ROLES = [
+    "PD_Project_Manager", "Calibration_Engineer", "PI_Engineering_Manager",
+    "PI_Regulatory_Compliance_Specialist", "PD_Verification_Validation_Engineer",
+    "Configuration_Manager", "DM_Administrator", "Post_Sales_Engineer",
+]
+
+
 @app.on_event("startup")
 async def on_startup():
     await open_db()
@@ -139,6 +146,15 @@ async def on_startup():
             logger.info("Empty database — seeding demo data")
             stats = await seed_all()
             logger.info(f"Seeded: {stats}")
+    else:
+        # Ensure admin@herko.dev always has full roles (survives stale DB state)
+        admin = await fetch_one(db, "SELECT id, roles FROM users WHERE email = ?", ("admin@herko.dev",))
+        if admin:
+            current_roles = jl(admin["roles"]) or []
+            if set(ADMIN_ROLES) - set(current_roles):
+                await run(db, "UPDATE users SET roles = ?, active_role = ? WHERE email = ?",
+                          (jd(ADMIN_ROLES), "PD_Project_Manager", "admin@herko.dev"))
+                logger.info("Patched admin@herko.dev roles to full set")
 
 
 @app.on_event("shutdown")
@@ -1187,5 +1203,15 @@ if __name__ == "__main__":
         _log_file = open(_log_path, "a", buffering=1, encoding="utf-8")
         sys.stdout = _log_file
         sys.stderr = _log_file
+        # Repatch any StreamHandlers that cached the old None stderr/stdout.
+        import logging as _logging
+        for _h in _logging.root.handlers:
+            if isinstance(_h, _logging.StreamHandler) and _h.stream is None:
+                _h.stream = _log_file
+        for _name, _lgr in _logging.Logger.manager.loggerDict.items():
+            if isinstance(_lgr, _logging.Logger):
+                for _h in _lgr.handlers:
+                    if isinstance(_h, _logging.StreamHandler) and _h.stream is None:
+                        _h.stream = _log_file
     _port = int(os.environ.get("HERKO_API_PORT", 8765))
     uvicorn.run(app, host="127.0.0.1", port=_port, log_level="info")

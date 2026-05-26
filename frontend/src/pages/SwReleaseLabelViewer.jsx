@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, triggerDownload } from "../lib/api";
 import { toast } from "sonner";
 
 const ScalarChart  = lazy(() => import("../components/charts").then(m => ({ default: m.ScalarChart })));
@@ -830,13 +830,10 @@ export default function SwReleaseLabelViewer({ id: propId } = {}) {
         filename:      exportFilters.filename || undefined,
       };
       const resp = await api.post(`/v1/sw-releases/${id}/labels/export-dcm`, body, { responseType: "blob" });
-      const blob = new Blob([resp.data], { type: "application/octet-stream" });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = exportFilters.filename || `export_${new Date().toISOString().slice(0, 10)}.dcm`;
-      a.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(
+        new Blob([resp.data], { type: "application/octet-stream" }),
+        exportFilters.filename || `export_${new Date().toISOString().slice(0, 10)}.dcm`
+      );
       toast.success("DCM exported");
       setShowExportDcmModal(false);
     } catch (e) {

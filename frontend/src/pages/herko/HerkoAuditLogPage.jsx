@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../../lib/api'
+import { api, triggerDownload } from '../../lib/api'
 import { toast } from 'sonner'
 
 // ── constants ──────────────────────────────────────────────────────────────
@@ -271,13 +271,7 @@ export default function HerkoAuditLogPage() {
       }),
     ]
     const csv = rows.map(r => r.join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `audit_log_${fromDate}_${toDate}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    triggerDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `audit_log_${fromDate}_${toDate}.csv`)
   }
 
   return (

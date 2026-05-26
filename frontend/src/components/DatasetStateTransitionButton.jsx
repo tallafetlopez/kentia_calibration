@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import axios from 'axios';
+import { api as axios } from '../lib/api';
 import { formatApiErrorDetail } from '../lib/api';
 
 const DatasetStateTransitionButton = ({ datasetId, currentState, onTransitionSuccess }) => {
@@ -64,7 +64,7 @@ const DatasetStateTransitionButton = ({ datasetId, currentState, onTransitionSuc
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_BACKEND_URL}/api/v1/datasets/${datasetId}/transition`,
+        `/v1/datasets/${datasetId}/transition`,
         { to_state: nextState }
       );
 

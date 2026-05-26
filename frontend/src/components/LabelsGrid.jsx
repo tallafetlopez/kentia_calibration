@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { api, formatApiErrorDetail, apiCall } from "../lib/api";
+import { api, formatApiErrorDetail, apiCall, triggerDownload } from "../lib/api";
 import { LABEL_CONFIDENCE, LABEL_LEVELS } from "../lib/constants.jsx";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -166,11 +166,7 @@ export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
       return `"${s}"`;
     }).join(","));
     const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `labels_${datasetId.slice(0,8)}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    triggerDownload(new Blob([csv], { type: "text/csv" }), `labels_${datasetId.slice(0,8)}.csv`);
   };
 
   const copySelected = async () => {

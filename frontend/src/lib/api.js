@@ -51,3 +51,36 @@ export async function apiCall(fn) {
   }
 }
 
+// Tauri-compatible file save: uses native save dialog when running in Tauri,
+// falls back to blob URL download in browser dev mode.
+export async function triggerDownload(blob, filename) {
+  if (window.__TAURI_INTERNALS__) {
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const { writeFile } = await import("@tauri-apps/plugin-fs");
+      const ext = filename.split(".").pop();
+      const filters = ext === "csv"
+        ? [{ name: "CSV", extensions: ["csv"] }]
+        : ext === "dcm"
+        ? [{ name: "DCM", extensions: ["dcm"] }]
+        : [{ name: "All files", extensions: ["*"] }];
+      const path = await save({ defaultPath: filename, filters });
+      if (!path) return; // user cancelled
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      await writeFile(path, bytes);
+      return;
+    } catch (e) {
+      console.error("Tauri save failed, falling back:", e);
+    }
+  }
+  // Browser fallback
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
