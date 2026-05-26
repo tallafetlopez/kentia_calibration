@@ -1159,7 +1159,11 @@ _default_dev_origins = [
     "http://localhost:3000", "http://localhost:3001", "http://localhost:3002",
     "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002",
 ]
-CORS_ORIGINS = list(dict.fromkeys([o.strip() for o in _env_cors_origins if o.strip()] + _default_dev_origins))
+# Tauri production origins
+_tauri_origins = ["tauri://localhost", "http://tauri.localhost"]
+CORS_ORIGINS = list(dict.fromkeys(
+    [o.strip() for o in _env_cors_origins if o.strip()] + _default_dev_origins + _tauri_origins
+))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -1168,6 +1172,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/health", tags=["Health"])
+async def health():
+    return {"status": "ok"}
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    _port = int(os.environ.get("HERKO_API_PORT", 8765))
+    uvicorn.run(app, host="127.0.0.1", port=_port, log_level="info")

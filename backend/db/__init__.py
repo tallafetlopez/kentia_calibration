@@ -10,7 +10,21 @@ from typing import Any, Optional
 import aiosqlite
 
 _log = logging.getLogger(__name__)
-DB_PATH = Path(__file__).parent.parent / "calibration_manager.db"
+
+import os as _os, sys as _sys
+
+def _resolve_db_path() -> Path:
+    custom = _os.environ.get("HERKO_DB_PATH")
+    if custom:
+        return Path(custom)
+    # PyInstaller frozen or production: use app data dir
+    if getattr(_sys, "frozen", False) or _os.environ.get("HERKO_DATA_PATH"):
+        from resource_path import app_data_dir
+        return app_data_dir() / "calibration.db"
+    # Development: keep next to backend/ for easy DBeaver access
+    return Path(__file__).parent.parent / "calibration_manager.db"
+
+DB_PATH = _resolve_db_path()
 
 _conn: Optional[aiosqlite.Connection] = None
 

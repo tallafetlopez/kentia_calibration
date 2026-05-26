@@ -13,7 +13,12 @@ from dependencies import get_current_user, now_iso
 
 router = APIRouter(prefix="/sw-releases", tags=["A2L Management"])
 
-UPLOADS_DIR = Path(__file__).parent.parent / "uploads" / "a2l"
+import sys as _sys
+if getattr(_sys, "frozen", False) or os.environ.get("HERKO_DATA_PATH"):
+    from resource_path import app_data_dir
+    UPLOADS_DIR = app_data_dir() / "uploads" / "a2l"
+else:
+    UPLOADS_DIR = Path(__file__).parent.parent / "uploads" / "a2l"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 

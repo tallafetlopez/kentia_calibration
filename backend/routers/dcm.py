@@ -22,7 +22,12 @@ from dependencies import get_current_user, now_iso
 
 router = APIRouter(tags=["DCM Management"])
 
-UPLOADS_DIR = _BACKEND_DIR / "uploads" / "dcm"
+import os as _os
+if getattr(sys, "frozen", False) or _os.environ.get("HERKO_DATA_PATH"):
+    from resource_path import app_data_dir
+    UPLOADS_DIR = app_data_dir() / "uploads" / "dcm"
+else:
+    UPLOADS_DIR = _BACKEND_DIR / "uploads" / "dcm"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
