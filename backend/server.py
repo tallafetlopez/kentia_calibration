@@ -57,12 +57,6 @@ async def current_user(request: Request) -> dict:
     return await get_current_user(request, db)
 
 
-def _strip(doc):
-    if doc is None:
-        return None
-    doc.pop("_id", None)
-    return doc
-
 
 async def log_audit(entity_type: str, entity_id: str, action: str, author: str,
                     previous_value=None, new_value=None, justification: str = ""):

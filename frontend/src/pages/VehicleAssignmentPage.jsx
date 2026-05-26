@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { api, formatApiErrorDetail, apiCall } from "../lib/api";
 import { toast } from "sonner";
 import { fmtDate, LifecycleBadge } from "../lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -23,9 +23,9 @@ export default function VehicleAssignmentPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const submit = async () => {
+  const submit = () => {
     if (!form.dataset_id) { toast.error("Pick a dataset"); return; }
-    try {
+    return apiCall(async () => {
       const body = { ...form };
       Object.keys(body).forEach((k) => { if (!body[k]) body[k] = null; });
       body.dataset_id = form.dataset_id;
@@ -33,7 +33,7 @@ export default function VehicleAssignmentPage() {
       toast.success("Vehicle_SW_ID generated");
       setForm({ dataset_id: "", vin: "", variant_id: "", manufacturing_order_reference: "", service_case_reference: "" });
       load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+    });
   };
 
   const canAssign = user?.roles?.includes("DM_Administrator");

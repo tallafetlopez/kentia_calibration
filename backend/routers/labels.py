@@ -36,36 +36,9 @@ from parsers.a2l_parser import A2lParser          # noqa: E402
 from parsers.dcm_parser import DCMParser          # noqa: E402
 from parsers.dcm_writer import write_dcm          # noqa: E402
 from utils.map_limits import clamp_matrix         # noqa: E402
+from dependencies import get_db, get_current_user, now_iso as _now_iso, require_sr as _require_sr  # noqa: E402
 
 router = APIRouter(tags=["Labels"])
-
-
-# ─── helpers ──────────────────────────────────────────────────────────────────
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-async def get_db():
-    from server import db
-    return db
-
-
-async def get_current_user(request: Request):
-    from auth_utils import get_current_user as _get
-    from server import db
-    return await _get(request, db)
-
-
-async def _require_sr(sr_id: str, db):
-    try:
-        oid = ObjectId(sr_id)
-    except Exception:
-        raise HTTPException(400, "Invalid sw_release id")
-    sr = await db.sw_releases.find_one({"_id": oid})
-    if not sr:
-        raise HTTPException(404, "SW Release not found")
-    return sr
 
 
 # ─── In-memory parse cache (path → (mtime, result)) ──────────────────────────
@@ -487,7 +460,7 @@ async def get_label_detail(
         "values":              detail_values,
         "size":                dcm_detail.get("size"),
         "rows":                len(detail_values) if detail_values else dcm_detail.get("rows"),
-        "cols":                len(detail_values[0]) if detail_values and detail_values else dcm_detail.get("cols"),
+        "cols":                (len(detail_values[0]) if isinstance(detail_values[0], list) else None) if detail_values else dcm_detail.get("cols"),
         "truncated":           detail_truncated,
         "original_dimensions": detail_orig_dims,
         # Flags

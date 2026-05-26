@@ -7,7 +7,6 @@ Operations on WP are persisted with full edit history.
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,34 +19,9 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from models_calibration import CalibUpdate, CalibResetRequest
 from utils.map_limits import clamp_matrix, is_2d_matrix, MAX_MAP_DIM
+from dependencies import get_db, get_current_user, now_iso as _now, require_sr as _require_sr
 
 router = APIRouter(tags=["calibration_values"])
-
-
-async def get_db():
-    from server import db
-    return db
-
-
-async def get_current_user(request: Request):
-    from auth_utils import get_current_user as _get
-    from server import db
-    return await _get(request, db)
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-async def _require_sr(sr_id: str, db):
-    try:
-        oid = ObjectId(sr_id)
-    except Exception:
-        raise HTTPException(400, "Invalid sw_release id")
-    sr = await db.sw_releases.find_one({"_id": oid})
-    if not sr:
-        raise HTTPException(404, "SW Release not found")
-    return sr
 
 
 async def _get_or_init_working(db, sr_id: str, label_name: str) -> dict:

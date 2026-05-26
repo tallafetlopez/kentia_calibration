@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Any
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from auth_utils import get_current_user
+from dependencies import get_db, get_current_user
 
 router = APIRouter(prefix="/traceability", tags=["Traceability"])
 
@@ -68,18 +68,8 @@ class AuditLogEntry(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-async def get_db() -> AsyncIOMotorDatabase:
-    """Dependency to get database."""
-    from server import db
-    return db
-
-
-async def get_user(
-    request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Resolve authenticated user with database dependency."""
-    return await get_current_user(request, db)
+async def get_user(request: Request):
+    return await get_current_user(request)
 
 
 @router.get("", response_model=List[TraceabilityChain])

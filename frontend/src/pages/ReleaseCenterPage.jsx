@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { api, formatApiErrorDetail, apiCall } from "../lib/api";
 import { toast } from "sonner";
 import { LifecycleBadge, fmtDate, DEPLOYMENT_CONTEXTS } from "../lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -149,9 +149,9 @@ export default function ReleaseCenterPage() {
 
   const releaseCandidates = all.filter((d) => d.lifecycle_state === "RELEASE_CANDIDATE");
 
-  const selectForRelease = async (ds) => {
+  const selectForRelease = (ds) => {
     if (!justification) { toast.error("Enter justification"); return; }
-    try {
+    return apiCall(async () => {
       await api.post(`/datasets/${ds.id}/release-select`, {
         selected_deployment_context: selCtx,
         selected_variant_id: variant || null,
@@ -160,7 +160,7 @@ export default function ReleaseCenterPage() {
       toast.success(`${ds.dataset_name} → RELEASE_CANDIDATE`);
       setJustification("");
       load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+    });
   };
 
   const canSelect = user?.roles?.includes("Configuration_Manager");

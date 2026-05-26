@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -32,24 +31,12 @@ if str(_PARSERS_DIR) not in sys.path:
     sys.path.insert(0, str(_PARSERS_DIR))
 
 from parsers.dcm_parser import DCMParser  # noqa: E402
+from dependencies import get_db, get_current_user, now_iso as _now_iso, require_sr as _require_sr  # noqa: E402
 
 router = APIRouter(tags=["DCM Management"])
 
 UPLOADS_DIR = _BACKEND_DIR / "uploads" / "dcm"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# ─── dependency helpers ────────────────────────────────────────────────────────
-
-async def get_db() -> AsyncIOMotorDatabase:
-    from server import db
-    return db
-
-
-async def get_current_user(request: Request):
-    from auth_utils import get_current_user as _get
-    from server import db
-    return await _get(request, db)
 
 
 # ─── response models ───────────────────────────────────────────────────────────
@@ -98,21 +85,6 @@ class DCMImportResponse(BaseModel):
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-async def _require_sr(sr_id: str, db):
-    try:
-        oid = ObjectId(sr_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid sw_release id")
-    sr = await db.sw_releases.find_one({"_id": oid})
-    if not sr:
-        raise HTTPException(status_code=404, detail="SW Release not found")
-    return sr
-
 
 async def _get_parsed(sr: dict) -> dict:
     """Parse the DCM file for the given sw_release document."""

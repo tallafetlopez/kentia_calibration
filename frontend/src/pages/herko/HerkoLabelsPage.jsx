@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { LABEL_CONFIDENCE, LABEL_LEVELS } from '../../lib/constants.jsx'
 import { toast } from 'sonner'
 import Button from '../../components/herko/Button'
 
@@ -20,8 +21,8 @@ const LEVEL_COLORS = {
   VEHICLE_SPECIFIC:{ background: '#FEE2E2', color: '#7F1D1D' },
 }
 
-const LEVELS       = ['CONFIGURATION', 'CARRY_OVER', 'VARIANT_SPECIFIC', 'VEHICLE_SPECIFIC']
-const CONFIDENCES  = ['EMPTY', 'CALIBRATED', 'VALIDATED', 'DOCUMENTED']
+const LEVELS       = LABEL_LEVELS
+const CONFIDENCES  = LABEL_CONFIDENCE
 const DATA_TYPES   = ['FLOAT', 'UBYTE', 'SBYTE', 'UWORD', 'SWORD', 'ULONG', 'SLONG', 'FLOAT32_IEEE', 'FLOAT64_IEEE', 'VALUE', 'STRING']
 
 const EMPTY_LABEL_FORM = {

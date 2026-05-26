@@ -6,20 +6,15 @@ from pymongo import ReturnDocument
 
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from auth_utils import get_current_user, require_role
+from auth_utils import require_role
 from models import WorkPackageCreate, WorkPackageUpdate, _uuid, _now
+from dependencies import get_db as _db, get_current_user as _get_user
 
 router = APIRouter(prefix="/work-packages", tags=["WorkPackages"])
 
 
-async def _db():
-    from server import db
-    return db
-
-
 async def _user(request: Request):
-    db = await _db()
-    return await get_current_user(request, db)
+    return await _get_user(request)
 
 
 @router.get("")

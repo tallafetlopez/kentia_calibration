@@ -6,8 +6,8 @@ from typing import Optional, List
 from datetime import datetime
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from auth_utils import get_current_user
 from starlette.requests import Request
+from dependencies import get_db, get_current_user
 
 router = APIRouter(prefix="/sw-releases", tags=["SW Releases"])
 
@@ -55,18 +55,8 @@ class SWReleaseStatusUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-async def get_db() -> AsyncIOMotorDatabase:
-    """Dependency to get database — should be overridden in main.py."""
-    from server import db
-    return db
-
-
-async def get_user(
-    request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Resolve authenticated user with database dependency."""
-    return await get_current_user(request, db)
+async def get_user(request: Request):
+    return await get_current_user(request)
 
 
 @router.get("", response_model=List[SWReleaseResponse])

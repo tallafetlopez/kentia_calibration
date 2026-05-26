@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "sonner";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API_BASE = `${BACKEND_URL}/api`;
@@ -40,5 +41,13 @@ export function formatApiErrorDetail(detail) {
       .join(" ");
   if (detail && typeof detail.msg === "string") return detail.msg;
   return String(detail);
+}
+
+export async function apiCall(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    toast.error(formatApiErrorDetail(e.response?.data?.detail));
+  }
 }
 

@@ -17,27 +17,13 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from models import A2LUploadResponse
+from dependencies import get_db, get_current_user
 
 router = APIRouter(prefix="/sw-releases", tags=["A2L Management"])
 
 # Create uploads directory
 UPLOADS_DIR = Path(__file__).parent.parent / "uploads" / "a2l"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-async def get_db() -> AsyncIOMotorDatabase:
-    """Placeholder - db will be injected by main app"""
-    from server import db
-
-    return db
-
-
-async def get_current_user(request: Request):
-    """Placeholder - will be injected from auth_utils"""
-    from auth_utils import get_current_user as _get_current_user
-    from server import db
-
-    return await _get_current_user(request, db)
 
 
 def _parse_a2l_simple(file_path: str) -> dict:

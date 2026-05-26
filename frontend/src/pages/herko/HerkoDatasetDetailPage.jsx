@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { LABEL_CONFIDENCE, LABEL_LEVELS } from '../../lib/constants.jsx'
 import { toast } from 'sonner'
 import Tabs from '../../components/herko/Tabs'
 import StateBadge from '../../components/herko/StateBadge'
@@ -14,8 +15,8 @@ const TABS = [
   { key: 'changelog', label: 'Change Log' },
 ]
 
-const LEVEL_OPTIONS = ['CONFIGURATION', 'CARRY_OVER', 'VARIANT_SPECIFIC', 'VEHICLE_SPECIFIC']
-const CONFIDENCE_OPTIONS = ['EMPTY', 'CALIBRATED', 'VALIDATED', 'DOCUMENTED']
+const LEVEL_OPTIONS = LABEL_LEVELS
+const CONFIDENCE_OPTIONS = LABEL_CONFIDENCE
 const YES_NO_OPTIONS = ['YES', 'NO']
 
 export default function HerkoDatasetDetailPage() {

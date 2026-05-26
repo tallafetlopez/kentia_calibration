@@ -2,11 +2,12 @@
 
 from fastapi import APIRouter, HTTPException, Query, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, get_args
 from datetime import datetime
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from auth_utils import get_current_user
+from dependencies import get_db, get_current_user
+from models import LabelLevel, LabelConfidence
 
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
@@ -74,7 +75,7 @@ class LabelUpdateRequest(BaseModel):
     @field_validator("level")
     @classmethod
     def validate_level(cls, v):
-        allowed = {"CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"}
+        allowed = set(get_args(LabelLevel))
         if v is not None and v not in allowed:
             raise ValueError(f"level must be one of {', '.join(sorted(allowed))}")
         return v
@@ -82,7 +83,7 @@ class LabelUpdateRequest(BaseModel):
     @field_validator("confidence_status")
     @classmethod
     def validate_confidence_status(cls, v):
-        allowed = {"EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"}
+        allowed = set(get_args(LabelConfidence))
         if v is not None and v not in allowed:
             raise ValueError(f"confidence_status must be one of {', '.join(sorted(allowed))}")
         return v
@@ -107,18 +108,8 @@ class DatasetResponse(DatasetBase):
     model_config = ConfigDict(populate_by_name=True)
 
 
-async def get_db() -> AsyncIOMotorDatabase:
-    """Dependency to get database."""
-    from server import db
-    return db
-
-
-async def get_user(
-    request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-):
-    """Resolve authenticated user with database dependency."""
-    return await get_current_user(request, db)
+async def get_user(request: Request):
+    return await get_current_user(request)
 
 
 def _is_valid_transition(from_state: str, to_state: str) -> bool:
@@ -724,7 +715,7 @@ def _mock_labels(dataset_id: str):
         "LambdaCtl_Setp", "IdleSpd_Target", "MaxTrq_Lim", "CoolantTmp_Warn",
         "OilPress_Fault", "Knock_Detect", "StartAssist_Fuel", "Immobilizer_Key",
     ]
-    statuses = ["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"]
+    statuses = list(get_args(LabelConfidence))
     labels = []
     for i, name in enumerate(names):
         labels.append({

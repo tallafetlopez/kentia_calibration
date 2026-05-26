@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { api, formatApiErrorDetail, apiCall } from "../lib/api";
 import { toast } from "sonner";
 import { LifecycleBadge, fmtDate } from "../lib/constants";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
@@ -80,13 +80,8 @@ export default function DatasetDetailPage() {
   const [otherDsId, setOtherDsId] = useState("");
   const [diff, setDiff] = useState(null);
   const [allDatasets, setAllDatasets] = useState([]);
-  const [renameMode, setRenameMode] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
-  const [renameError, setRenameError] = useState("");
-  const [renameSaving, setRenameSaving] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [rename, setRename] = useState({ active: false, value: "", error: "", saving: false });
+  const [del, setDel] = useState({ open: false, error: "", busy: false });
 
   // DCM import state
   const [dcmSrSummary, setDcmSrSummary] = useState(null);
@@ -134,91 +129,75 @@ export default function DatasetDetailPage() {
     (l.regulatory_relevance === "YES" && !l.change_justification));
   const modifiedCount = labels.filter((l) => l.modified).length;
 
-  const runTechValidate = async () => {
-    try {
-      const { data } = await api.post(`/datasets/${id}/technical-validate`);
-      if (data.status === "PASS") {
-        toast.success("Technical validation PASS");
-      } else {
-        const n = data.errors.length;
-        toast.error(`Technical validation FAIL — ${n} issue${n !== 1 ? "s" : ""}`, {
-          description: data.errors.slice(0, 5).join("\n") + (n > 5 ? `\n…and ${n - 5} more` : ""),
-          duration: 8000,
-        });
-      }
-      await load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
-
-  const submitApproval = async () => {
-    try {
-      await api.post(`/datasets/${id}/submit-approval`);
-      toast.success("Submitted for approval");
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
-
-  const submitReview = async (domain, status, comments, vnvRef) => {
-    try {
-      const body = { domain, status };
-      if (comments) body.comments = comments;
-      if (vnvRef) body.vnv_report_reference = vnvRef;
-      await api.post(`/datasets/${id}/review`, body);
-      toast.success(`${domain} · ${status}`);
-      setDialogs({ ...dialogs, review: null });
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
-
-  const approve = async () => {
-    try {
-      await api.post(`/datasets/${id}/approve`);
-      toast.success("Dataset APPROVED");
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
-
-  const releaseSelect = async (ctx, variant, justification) => {
-    try {
-      await api.post(`/datasets/${id}/release-select`, {
-        selected_deployment_context: ctx,
-        selected_variant_id: variant || null,
-        selection_justification: justification,
+  const runTechValidate = () => apiCall(async () => {
+    const { data } = await api.post(`/datasets/${id}/technical-validate`);
+    if (data.status === "PASS") {
+      toast.success("Technical validation PASS");
+    } else {
+      const n = data.errors.length;
+      toast.error(`Technical validation FAIL — ${n} issue${n !== 1 ? "s" : ""}`, {
+        description: data.errors.slice(0, 5).join("\n") + (n > 5 ? `\n…and ${n - 5} more` : ""),
+        duration: 8000,
       });
-      toast.success("Marked RELEASE_CANDIDATE");
-      setDialogs({ ...dialogs, release: false });
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
+    }
+    await load();
+  });
 
-  const deprecate = async (just, repl) => {
-    try {
-      await api.post(`/datasets/${id}/deprecate`, { justification: just, replacement_dataset_id: repl || null });
-      toast.success("Deprecated");
-      setDialogs({ ...dialogs, deprecate: false });
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
+  const submitApproval = () => apiCall(async () => {
+    await api.post(`/datasets/${id}/submit-approval`);
+    toast.success("Submitted for approval");
+    load();
+  });
 
-  const derivePostSales = async (name, vin, variant, svc, changelog) => {
-    try {
-      const { data } = await api.post(`/datasets/${id}/derive-post-sales`, {
-        dataset_name: name, vin: vin || null, variant_id: variant || null, service_case_reference: svc || null, changelog_summary: changelog,
-      });
-      toast.success("Derived dataset created");
-      setDialogs({ ...dialogs, derive: false });
-      navigate(`/datasets/${data.id}`);
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
+  const submitReview = (domain, status, comments, vnvRef) => apiCall(async () => {
+    const body = { domain, status };
+    if (comments) body.comments = comments;
+    if (vnvRef) body.vnv_report_reference = vnvRef;
+    await api.post(`/datasets/${id}/review`, body);
+    toast.success(`${domain} · ${status}`);
+    setDialogs({ ...dialogs, review: null });
+    load();
+  });
 
-  const attachVnv = async (ref) => {
-    try {
-      await api.post(`/datasets/${id}/attach-vnv`, { vnv_report_reference: ref });
-      toast.success("V&V report attached");
-      setDialogs({ ...dialogs, attach_vnv: false });
-      load();
-    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-  };
+  const approve = () => apiCall(async () => {
+    await api.post(`/datasets/${id}/approve`);
+    toast.success("Dataset APPROVED");
+    load();
+  });
+
+  const releaseSelect = (ctx, variant, justification) => apiCall(async () => {
+    await api.post(`/datasets/${id}/release-select`, {
+      selected_deployment_context: ctx,
+      selected_variant_id: variant || null,
+      selection_justification: justification,
+    });
+    toast.success("Marked RELEASE_CANDIDATE");
+    setDialogs({ ...dialogs, release: false });
+    load();
+  });
+
+  const deprecate = (just, repl) => apiCall(async () => {
+    await api.post(`/datasets/${id}/deprecate`, { justification: just, replacement_dataset_id: repl || null });
+    toast.success("Deprecated");
+    setDialogs({ ...dialogs, deprecate: false });
+    load();
+  });
+
+  const derivePostSales = (name, vin, variant, svc, changelog) => apiCall(async () => {
+    const { data } = await api.post(`/datasets/${id}/derive-post-sales`, {
+      dataset_name: name, vin: vin || null, variant_id: variant || null, service_case_reference: svc || null, changelog_summary: changelog,
+    });
+    toast.success("Derived dataset created");
+    setDialogs({ ...dialogs, derive: false });
+    navigate(`/datasets/${data.id}`);
+  });
+
+  const attachVnv = (ref) => apiCall(async () => {
+    await api.post(`/datasets/${id}/attach-vnv`, { vnv_report_reference: ref });
+    toast.success("V&V report attached");
+    setDialogs({ ...dialogs, attach_vnv: false });
+    load();
+  });
 
   const fetchDiff = async () => {
     if (!otherDsId) return;
@@ -226,52 +205,38 @@ export default function DatasetDetailPage() {
     setDiff(data);
   };
 
-  const startRename = () => {
-    setRenameMode(true);
-    setRenameValue(d.dataset_name || "");
-    setRenameError("");
-  };
+  const startRename = () => setRename({ active: true, value: d.dataset_name || "", error: "", saving: false });
 
-  const cancelRename = () => {
-    setRenameMode(false);
-    setRenameValue(d.dataset_name || "");
-    setRenameError("");
-  };
+  const cancelRename = () => setRename({ active: false, value: d.dataset_name || "", error: "", saving: false });
 
   const saveRename = async () => {
-    const trimmed = renameValue.trim();
+    const trimmed = rename.value.trim();
     if (!trimmed) {
-      setRenameError("Dataset name cannot be empty");
+      setRename((r) => ({ ...r, error: "Dataset name cannot be empty" }));
       return;
     }
-    setRenameSaving(true);
-    setRenameError("");
+    setRename((r) => ({ ...r, saving: true, error: "" }));
     try {
       const { data } = await api.patch(`/datasets/${id}/rename`, { name: trimmed });
       setBundle((prev) => ({ ...prev, dataset: data }));
       setAllDatasets((prev) => prev.map((item) => (item.id === id ? data : item)));
-      setRenameMode(false);
+      setRename({ active: false, value: data.dataset_name, error: "", saving: false });
       toast.success("Dataset renamed");
       const a = await api.get(`/audit-log`, { params: { entity_id: id } });
       setAudit(a.data);
     } catch (e) {
-      setRenameError(formatApiErrorDetail(e.response?.data?.detail));
-    } finally {
-      setRenameSaving(false);
+      setRename((r) => ({ ...r, error: formatApiErrorDetail(e.response?.data?.detail), saving: false }));
     }
   };
 
   const confirmDelete = async () => {
-    setDeleteBusy(true);
-    setDeleteError("");
+    setDel({ open: true, error: "", busy: true });
     try {
       await api.delete(`/datasets/${id}`);
       toast.success("Dataset deleted");
       navigate("/datasets");
     } catch (e) {
-      setDeleteError(formatApiErrorDetail(e.response?.data?.detail));
-    } finally {
-      setDeleteBusy(false);
+      setDel({ open: true, error: formatApiErrorDetail(e.response?.data?.detail), busy: false });
     }
   };
 
@@ -359,22 +324,22 @@ export default function DatasetDetailPage() {
               {d.locked && <span className="lc-badge lc-RELEASE_CANDIDATE"><Lock className="w-3 h-3" /> LOCKED</span>}
               {d.is_post_sales_derived && <span className="lc-badge lc-EDIT">POST-SALES DERIVED</span>}
             </div>
-            {renameMode ? (
+            {rename.active ? (
               <div className="mt-3 flex flex-wrap items-start gap-3">
                 <div className="min-w-[280px] flex-1">
                   <Input
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
+                    value={rename.value}
+                    onChange={(e) => setRename((r) => ({ ...r, value: e.target.value }))}
                     className="h-11 text-lg font-semibold"
                     data-testid="dataset-rename-input"
                   />
-                  {renameError && <div className="mt-2 text-sm text-red-600">{renameError}</div>}
+                  {rename.error && <div className="mt-2 text-sm text-red-600">{rename.error}</div>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button onClick={saveRename} disabled={renameSaving} data-testid="dataset-rename-save">
-                    {renameSaving ? "Saving..." : "Save"}
+                  <Button onClick={saveRename} disabled={rename.saving} data-testid="dataset-rename-save">
+                    {rename.saving ? "Saving..." : "Save"}
                   </Button>
-                  <Button variant="outline" onClick={cancelRename} disabled={renameSaving} data-testid="dataset-rename-cancel">
+                  <Button variant="outline" onClick={cancelRename} disabled={rename.saving} data-testid="dataset-rename-cancel">
                     Cancel
                   </Button>
                 </div>
@@ -407,7 +372,7 @@ export default function DatasetDetailPage() {
                   <DropdownMenuItem onClick={startRename} data-testid="dataset-actions-rename">
                     <Pencil className="w-4 h-4" /> Rename dataset
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => { setDeleteError(""); setDeleteOpen(true); }} className="text-red-600 focus:text-red-700" data-testid="dataset-actions-delete">
+                  <DropdownMenuItem onClick={() => setDel({ open: true, error: "", busy: false })} className="text-red-600 focus:text-red-700" data-testid="dataset-actions-delete">
                     <Trash2 className="w-4 h-4" /> Delete dataset
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -812,17 +777,17 @@ export default function DatasetDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog open={del.open} onOpenChange={(v) => setDel((d) => ({ ...d, open: v }))}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete dataset {d.dataset_name}?</AlertDialogTitle>
             <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
-          {deleteError && <div className="text-sm text-red-600">{deleteError}</div>}
+          {del.error && <div className="text-sm text-red-600">{del.error}</div>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmDelete(); }} disabled={deleteBusy} className="bg-red-600 text-white hover:bg-red-700 focus:bg-red-700">
-              {deleteBusy ? "Deleting..." : "Delete"}
+            <AlertDialogCancel disabled={del.busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmDelete(); }} disabled={del.busy} className="bg-red-600 text-white hover:bg-red-700 focus:bg-red-700">
+              {del.busy ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

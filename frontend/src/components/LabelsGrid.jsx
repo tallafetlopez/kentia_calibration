@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { api, formatApiErrorDetail, apiCall } from "../lib/api";
+import { LABEL_CONFIDENCE, LABEL_LEVELS } from "../lib/constants.jsx";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -41,8 +42,8 @@ const COLS = [
   { key: "unit", label: "Unit", width: 70, kind: "text", readonly: true },
   { key: "owner", label: "Owner", width: 80, kind: "enum", options: ["BeGas", "HERKO", "Shared"] },
   { key: "maturity", label: "Maturity", width: 90, kind: "enum", options: ["0", "25", "75", "100", "Deprecated"] },
-  { key: "level", label: "Level", width: 140, kind: "enum", options: ["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"] },
-  { key: "confidence_status", label: "Confidence", width: 120, kind: "enum", options: ["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"] },
+  { key: "level", label: "Level", width: 140, kind: "enum", options: LABEL_LEVELS },
+  { key: "confidence_status", label: "Confidence", width: 120, kind: "enum", options: LABEL_CONFIDENCE },
   { key: "regulatory_relevance", label: "Reg.", width: 70, kind: "enum", options: ["NO", "YES"] },
   { key: "regulation_reference", label: "Regulation", width: 130, kind: "text" },
   { key: "parametrizable_in_customer", label: "Cust.", width: 70, kind: "enum", options: ["NO", "YES"] },
@@ -331,15 +332,13 @@ export default function LabelsGrid({ datasetId, labels, readOnly, onReload }) {
         open={massOpen}
         onOpenChange={setMassOpen}
         count={selected.size}
-        onApply={async (patch) => {
-          try {
-            const { data } = await api.post(`/datasets/${datasetId}/labels/mass-update`, { label_ids: Array.from(selected), patch });
-            toast.success(`Updated ${data.updated} labels`);
-            setMassOpen(false);
-            setSelected(new Set());
-            await onReload();
-          } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
-        }}
+        onApply={(patch) => apiCall(async () => {
+          const { data } = await api.post(`/datasets/${datasetId}/labels/mass-update`, { label_ids: Array.from(selected), patch });
+          toast.success(`Updated ${data.updated} labels`);
+          setMassOpen(false);
+          setSelected(new Set());
+          await onReload();
+        })}
       />
     </div>
   );
@@ -439,7 +438,7 @@ function MassEditDialog({ open, onOpenChange, count, onApply }) {
               <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__keep">— keep —</SelectItem>
-                {["CONFIGURATION", "CARRY_OVER", "VARIANT_SPECIFIC", "VEHICLE_SPECIFIC"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                {LABEL_LEVELS.map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -449,7 +448,7 @@ function MassEditDialog({ open, onOpenChange, count, onApply }) {
               <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__keep">— keep —</SelectItem>
-                {["EMPTY", "CALIBRATED", "VALIDATED", "DOCUMENTED"].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                {LABEL_CONFIDENCE.map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
