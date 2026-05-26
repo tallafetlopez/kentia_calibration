@@ -1,0 +1,4 @@
+# Installer binaries are too large for git — store in artifact storage
+*.msi
+*.exe
+*.zip
