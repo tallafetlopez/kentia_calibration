@@ -959,19 +959,6 @@ export default function SwReleaseLabelViewer() {
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
           Reload
         </button>
-        <div className="w-px h-4 bg-gray-200"/>
-        <input ref={a2lUploadRef} type="file" accept=".a2l,.A2L" style={{display:"none"}}
-          onChange={e => uploadA2L(e.target.files?.[0])} />
-        <input ref={dcmUploadRef} type="file" accept=".dcm,.DCM" style={{display:"none"}}
-          onChange={e => uploadDCM(e.target.files?.[0])} />
-        <button onClick={() => a2lUploadRef.current?.click()} disabled={uploadingA2l}
-          className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors">
-          {uploadingA2l ? "Uploading..." : (swReleaseInfo?.a2l_filename ? "Replace A2L" : "Upload A2L")}
-        </button>
-        <button onClick={() => dcmUploadRef.current?.click()} disabled={uploadingDcm}
-          className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors">
-          {uploadingDcm ? "Uploading..." : (swReleaseInfo?.dcm_filename ? "Replace DCM" : "Upload DCM")}
-        </button>
         <button onClick={() => navigate(`/software-releases/${id}/merge`)}
           className="text-[11px] font-semibold px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
           Merge

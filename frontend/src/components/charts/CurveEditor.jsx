@@ -21,7 +21,7 @@ export default function CurveEditor({ swReleaseId, label, onChange }) {
     try {
       const r = await api.get(`/v1/sw-releases/${swReleaseId}/labels/${encodeURIComponent(label.name)}/values`);
       setValues(r.data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); const v = label.values || []; setValues({ wp_value: v, rp_value: v, modified: false }); }
   };
 
   useEffect(() => { refresh(); setSelected([]); }, [swReleaseId, label?.name]); // eslint-disable-line
