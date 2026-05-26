@@ -36,13 +36,26 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "category": "DeveloperTool",
+    "copyright": "© 2026 HERKO. All rights reserved.",
+    "shortDescription": "ECU Calibration Data Management",
+    "longDescription": "Professional calibration data management system for heavy-duty industrial vehicles. UNECE R156 compliant.",
     "externalBin": [
       "binaries/fastapi-server"
     ],
     "windows": {
       "wix": {
         "language": "en-US",
-        "upgradeCode": "B9F4E2A1-3C7D-4F8B-A5E6-1D2C3B4A5F6E"
+        "upgradeCode": "B9F4E2A1-3C7D-4F8B-A5E6-1D2C3B4A5F6E",
+        "bannerPath": "installer/banner.bmp",
+        "dialogImagePath": "installer/dialog.bmp"
+      },
+      "nsis": {
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "languages": ["English"]
       }
     }
   }
