@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { api, formatApiErrorDetail } from "../lib/api";
+import SwReleaseLabelViewer from "./SwReleaseLabelViewer";
 import { toast } from "sonner";
 import { fmtDateShort } from "../lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -27,7 +27,7 @@ function StatusPill({ status }) {
 
 export default function SoftwareReleasesPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const [selectedId, setSelectedId] = useState(null);
   const [items, setItems] = useState([]);
   const [ecus, setEcus] = useState([]);
   const [q, setQ] = useState("");
@@ -55,6 +55,17 @@ export default function SoftwareReleasesPage() {
     const { data } = await api.get("/software-releases", { params });
     setItems(data);
   }, [q, status, supplier]);
+
+  const openRelease = async (r) => {
+    try {
+      await api.get(`/v1/sw-releases/${r.id}`);
+      setSelectedId(r.id);
+    } catch {
+      const { data: v1List } = await api.get("/v1/sw-releases");
+      const v1 = (v1List || []).find(x => x.identifier === r.software_release_identifier && x.version === r.version);
+      if (v1) setSelectedId(v1._id || v1.id);
+    }
+  };
 
   useEffect(() => { api.get("/ecus").then((r) => { setEcus(r.data); if (r.data[0]) setForm((f) => ({ ...f, ecu_id: r.data[0].id })); }); }, []);
   useEffect(() => { load(); }, [load]);
@@ -119,8 +130,8 @@ export default function SoftwareReleasesPage() {
       setForm({ ...form, software_release_identifier: "", version: "", description: "", supplier: "" });
       await load();
 
-      // 5) Navigate directly to Label Viewer
-      navigate(`/software-releases/${v1Id}/labels`);
+      // 5) Select the new release in the embedded viewer
+      setSelectedId(v1Id);
     } catch (e) {
       toast.error(formatApiErrorDetail(e) || "Failed to create release");
     }
@@ -129,7 +140,9 @@ export default function SoftwareReleasesPage() {
   const canCreate = user?.roles?.includes("PD_Project_Manager");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="page-software-releases">
+    <div style={{ display: "flex", height: "calc(100vh - 130px)", gap: 0 }} data-testid="page-software-releases">
+    {/* ── Left panel: releases list ────────────────────────────────────────── */}
+    <div style={{ width: 420, minWidth: 420, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", paddingRight: 12, borderRight: "1px solid #E0E0E0", paddingTop: 4 }}>
       <div style={{ borderBottom: "1px solid #C8C8C8", paddingBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <div className="tiny-label">Workflow 1</div>
@@ -275,7 +288,9 @@ export default function SoftwareReleasesPage() {
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.id} data-testid={`sr-row-${r.software_release_identifier}`}>
+              <tr key={r.id} data-testid={`sr-row-${r.software_release_identifier}`}
+                style={{ cursor: "pointer", background: selectedId === r.id ? "#EFF6FF" : undefined }}
+                onClick={() => openRelease(r)}>
                 <td style={{ fontWeight: 600 }}>{r.software_release_identifier}</td>
                 <td style={{ fontFamily: "monospace" }}>{r.version}</td>
                 <td>{r.supplier || "—"}</td>
@@ -287,13 +302,13 @@ export default function SoftwareReleasesPage() {
                 <td style={{ fontFamily: "monospace", fontSize: 11, color: "#605E5C" }}>{fmtDateShort(r.release_date)}</td>
                 <td><StatusPill status={r.status} /></td>
                 <td style={{ textAlign: "right" }}>
-                  <Link
-                    to={`/software-releases/${r.id}`}
-                    style={{ fontSize: 11, color: "#646E5A", fontWeight: 600 }}
+                  <button
+                    onClick={e => { e.stopPropagation(); openRelease(r); }}
+                    style={{ fontSize: 11, color: "#646E5A", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
                     data-testid={`sr-open-${r.software_release_identifier}`}
                   >
                     Open
-                  </Link>
+                  </button>
                 </td>
               </tr>
             ))}
@@ -301,6 +316,14 @@ export default function SoftwareReleasesPage() {
           </tbody>
         </table>
       </div>
+    </div>
+    {/* ── Right panel: label viewer ─────────────────────────────────────────── */}
+    <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+      {selectedId
+        ? <SwReleaseLabelViewer id={selectedId} />
+        : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#8A8886", fontSize: 12 }}>Select a release to view labels</div>
+      }
+    </div>
     </div>
   );
 }

@@ -604,8 +604,10 @@ function sortItems(items, col, dir) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 100;
 
-export default function SwReleaseLabelViewer() {
-  const { id }   = useParams();
+export default function SwReleaseLabelViewer({ id: propId } = {}) {
+  const { id: paramId } = useParams();
+  const id       = propId ?? paramId;
+  const embedded = propId != null;
   const navigate = useNavigate();
 
   const [allLabels,     setAllLabels]     = useState([]);
@@ -888,7 +890,7 @@ export default function SwReleaseLabelViewer() {
   // ── Loading / error ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex flex-col items-center justify-center h-full gap-3" style={embedded ? {} : { minHeight: "100vh" }}>
         <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
         <p className="text-xs text-gray-500">{loadMsg}</p>
       </div>
@@ -901,22 +903,24 @@ export default function SwReleaseLabelViewer() {
           <p className="font-semibold text-sm text-red-800 mb-1">Error loading labels</p>
           <p className="text-xs text-red-700">{error}</p>
         </div>
-        <button onClick={() => navigate(-1)} className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded text-xs">Back</button>
+        {!embedded && <button onClick={() => navigate(-1)} className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded text-xs">Back</button>}
       </div>
     );
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 130px)" }}>
+    <div className="flex flex-col" style={{ height: embedded ? "100%" : "calc(100vh - 130px)" }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-gray-200 bg-white shrink-0">
         <div className="flex items-start gap-3 min-w-0">
-          <button onClick={() => navigate("/software-releases")}
-            className="text-xs text-gray-500 hover:text-gray-800 shrink-0 mt-0.5">
-            Back
-          </button>
+          {!embedded && (
+            <button onClick={() => navigate("/software-releases")}
+              className="text-xs text-gray-500 hover:text-gray-800 shrink-0 mt-0.5">
+              Back
+            </button>
+          )}
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-sm font-bold text-gray-900 leading-tight">
