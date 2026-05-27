@@ -1145,6 +1145,25 @@ async def reseed(user: dict = Depends(current_user)):
     return {"ok": True, **stats}
 
 
+@api.post("/v1/export/write-file")
+async def export_write_file(body: dict, user: dict = Depends(current_user)):
+    import base64
+    from pathlib import Path
+    filename = body.get("filename", "export.bin")
+    content_b64 = body.get("content_b64", "")
+    output_path = body.get("output_path")
+    content = base64.b64decode(content_b64)
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        downloads = Path.home() / "Downloads"
+        downloads.mkdir(parents=True, exist_ok=True)
+        out_path = downloads / filename
+    out_path.write_bytes(content)
+    return {"saved_to": str(out_path)}
+
+
 # =====================================================
 app.include_router(api)
 
@@ -1192,6 +1211,8 @@ app.add_middleware(
 @app.get("/health", tags=["Health"])
 async def health():
     return {"status": "ok"}
+
+
 
 
 if __name__ == "__main__":
