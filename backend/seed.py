@@ -370,3 +370,27 @@ async def seed_all(db):
         "labels": len(all_labels),
         "vehicle_sw_ids": len(vs_ids),
     }
+
+
+if __name__ == "__main__":
+    import asyncio
+    import os
+    from pathlib import Path
+    from dotenv import load_dotenv
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    load_dotenv(Path(__file__).parent / ".env")
+    MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+    DB_NAME   = os.getenv("DB_NAME", "calibration_manager")
+
+    async def _run():
+        client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=5000)
+        db = client[DB_NAME]
+        print(f"Conectando a {MONGO_URL} / {DB_NAME} …")
+        stats = await seed_all(db)
+        client.close()
+        print("Seed completado:")
+        for k, v in stats.items():
+            print(f"  {k}: {v}")
+
+    asyncio.run(_run())

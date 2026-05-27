@@ -1,7 +1,9 @@
 import axios from "axios";
 import { toast } from "sonner";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// En producción/desktop no hay REACT_APP_BACKEND_URL → cadena vacía → rutas relativas (/api/...)
+// En desarrollo puede apuntar a http://localhost:8000 si se define en .env
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 export const API_BASE = `${BACKEND_URL}/api`;
 
 export const api = axios.create({

@@ -101,6 +101,10 @@ agenthub/agents/youtube/db
 *.deb
 *.dylib
 
+# Large executables (exceed GitHub 100MB limit)
+installer_output/
+electron/mongod.exe
+
 # Build caches
 .cache/
 

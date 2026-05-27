@@ -2,9 +2,16 @@ from dotenv import load_dotenv
 from pathlib import Path
 import sys
 
-# Allow running with either "uvicorn server:app" (from backend/) or
-# "uvicorn backend.server:app" (from repo root).
-ROOT_DIR = Path(__file__).parent
+# Resolve base paths for dev and PyInstaller --onefile packaged mode
+if getattr(sys, 'frozen', False):
+    # PyInstaller extracts files to sys._MEIPASS at runtime
+    _MEIPASS = Path(sys._MEIPASS)
+    ROOT_DIR = _MEIPASS
+    FRONTEND_BUILD_DIR = _MEIPASS / "build"
+else:
+    ROOT_DIR = Path(__file__).parent
+    FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
+
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
@@ -18,7 +25,7 @@ from routers import labels as labels_router
 from routers import calibration_values as calibration_values_router
 from scripts.ensure_indexes import ensure_indexes
 
-load_dotenv(ROOT_DIR / ".env")
+load_dotenv(ROOT_DIR / ".env", override=False)
 
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -77,24 +84,30 @@ async def log_audit(entity_type: str, entity_id: str, action: str, author: str,
 # -------- Startup --------
 @app.on_event("startup")
 async def on_startup():
-    await db.users.create_index("email", unique=True)
-    await db.datasets.create_index("software_release_id")
-    await db.labels.create_index("dataset_id")
-    await db.labels.create_index("work_package_id")
-    await db.labels.create_index("owner")
-    await db.labels.create_index("maturity")
-    await db.work_packages.create_index([("code", 1), ("ecu_id", 1)], unique=True)
-    await db.audit_log.create_index("date")
-    await ensure_indexes(db)
+    # Wrap in try/except so a slow MongoDB doesn't prevent uvicorn from
+    # serving HTTP requests. Indexes will be created on the next restart
+    # once MongoDB is fully ready.
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.datasets.create_index("software_release_id")
+        await db.labels.create_index("dataset_id")
+        await db.labels.create_index("work_package_id")
+        await db.labels.create_index("owner")
+        await db.labels.create_index("maturity")
+        await db.work_packages.create_index([("code", 1), ("ecu_id", 1)], unique=True)
+        await db.audit_log.create_index("date")
+        await ensure_indexes(db)
 
-    existing = await db.users.count_documents({})
-    if existing == 0:
-        if DISABLE_SEED:
-            logger.info("Empty database detected, but automatic seed is DISABLED")
-        else:
-            logger.info("Empty database — seeding demo data")
-            stats = await seed_all(db)
-            logger.info(f"Seeded: {stats}")
+        existing = await db.users.count_documents({})
+        if existing == 0:
+            if DISABLE_SEED:
+                logger.info("Empty database detected, but automatic seed is DISABLED")
+            else:
+                logger.info("Empty database — seeding demo data")
+                stats = await seed_all(db)
+                logger.info(f"Seeded: {stats}")
+    except Exception as exc:
+        logger.warning(f"Startup DB init skipped (MongoDB may still be initialising): {exc}")
 
 
 @app.on_event("shutdown")
@@ -1209,6 +1222,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Serve React frontend (production / Electron mode) ────────────────────────
+# This block only activates when frontend/build/ exists (after `npm run build`).
+# In development, the React dev server on :3000 is used instead.
+if FRONTEND_BUILD_DIR.exists():
+    from fastapi.staticfiles import StaticFiles as _StaticFiles
+    from fastapi.responses import FileResponse as _FileResponse
+
+    _static_dir = FRONTEND_BUILD_DIR / "static"
+    if _static_dir.exists():
+        app.mount("/static", _StaticFiles(directory=str(_static_dir)), name="frontend-static")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _serve_react(full_path: str):
+        # Serve known files (favicon.ico, manifest.json, logo192.png, etc.)
+        target = FRONTEND_BUILD_DIR / full_path
+        if full_path and target.is_file():
+            return _FileResponse(str(target))
+        # Fallback: always return index.html so React Router works
+        return _FileResponse(str(FRONTEND_BUILD_DIR / "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
