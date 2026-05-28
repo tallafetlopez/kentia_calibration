@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 _BACKEND_DIR = Path(__file__).parent.parent
@@ -19,8 +20,6 @@ if str(_BACKEND_DIR) not in sys.path:
 from models_calibration import CalibUpdate, CalibResetRequest
 from utils.map_limits import clamp_matrix, is_2d_matrix, MAX_MAP_DIM
 from dependencies import get_db, get_current_user, now_iso as _now, require_sr as _require_sr
-from db import fetch_one, run, jl, jd
-from models import _uuid
 
 router = APIRouter(tags=["calibration_values"])
 
@@ -30,31 +29,26 @@ async def _get_or_init_working(db, sr_id: str, label_name: str) -> dict:
     from routers.labels import _build_merged, _cached_parse_dcm
 
     sr = await _require_sr(sr_id, db)
-    sr_id_str = sr["id"]
+    sr_id_str = str(sr["_id"])
 
-    row = await fetch_one(db,
-        "SELECT * FROM label_working_values WHERE sw_release_id=? AND label_name=?",
-        (sr_id_str, label_name),
+    doc = await db.label_working_values.find_one(
+        {"sw_release_id": sr_id_str, "label_name": label_name}
     )
-    if row:
-        doc = dict(row)
-        doc["rp_value"] = jl(doc.get("rp_value"))
-        doc["wp_value"] = jl(doc.get("wp_value"))
-        doc["edit_history"] = jl(doc.get("edit_history")) or []
-        doc["original_dimensions"] = jl(doc.get("original_dimensions"))
-        doc["modified"] = bool(doc.get("modified", 0))
-        doc["truncated"] = bool(doc.get("truncated", 0))
-
+    if doc:
+        # Lazy migration: clamp legacy oversized map documents
         if doc.get("type") == "map" and is_2d_matrix(doc.get("rp_value")):
             rp_clamped, _, _, rp_info = clamp_matrix(doc["rp_value"])
             wp_clamped, _, _, _ = clamp_matrix(doc.get("wp_value") or rp_clamped)
             if rp_info is not None:
-                await run(db, """
-                    UPDATE label_working_values
-                    SET rp_value=?, wp_value=?, truncated=1, original_dimensions=?
-                    WHERE sw_release_id=? AND label_name=?
-                """, (jd(rp_clamped), jd(wp_clamped), jd(rp_info["original_dimensions"]),
-                      sr_id_str, label_name))
+                await db.label_working_values.update_one(
+                    {"_id": doc["_id"]},
+                    {"$set": {
+                        "rp_value":            rp_clamped,
+                        "wp_value":            wp_clamped,
+                        "truncated":           True,
+                        "original_dimensions": rp_info["original_dimensions"],
+                    }},
+                )
                 doc["rp_value"] = rp_clamped
                 doc["wp_value"] = wp_clamped
                 doc["truncated"] = True
@@ -84,25 +78,18 @@ async def _get_or_init_working(db, sr_id: str, label_name: str) -> dict:
                 else:
                     rp = raw_vals
 
-    now = _now()
-    doc_id = _uuid()
-    await run(db, """
-        INSERT INTO label_working_values
-            (id, sw_release_id, label_name, type, rp_value, wp_value, modified, created_at, edit_history)
-        VALUES (?, ?, ?, ?, ?, ?, 0, ?, '[]')
-    """, (doc_id, sr_id_str, label_name, entry["type"], jd(rp), jd(rp), now))
-
-    return {
-        "id": doc_id,
+    new_doc = {
         "sw_release_id": sr_id_str,
-        "label_name": label_name,
-        "type": entry["type"],
-        "rp_value": rp,
-        "wp_value": rp,
-        "modified": False,
-        "created_at": now,
-        "edit_history": [],
+        "label_name":    label_name,
+        "type":          entry["type"],
+        "rp_value":      rp,
+        "wp_value":      rp,
+        "modified":      False,
+        "created_at":    _now(),
+        "edit_history":  [],
     }
+    await db.label_working_values.insert_one(new_doc)
+    return new_doc
 
 
 def _validate_against_limits(value, lower, upper, name="value") -> list[str]:
@@ -271,6 +258,7 @@ async def update_values(
 
     doc = await _get_or_init_working(db, sr_id, label_name)
 
+    # Guard: reject if stored wp_value already exceeds 16×16 (should not happen post-1d)
     if is_2d_matrix(doc.get("wp_value")):
         rows = len(doc["wp_value"])
         cols = len(doc["wp_value"][0]) if rows else 0
@@ -279,11 +267,13 @@ async def update_values(
 
     new_wp = _apply_operation(doc["wp_value"], body.operation, body)
 
+    # Reject if operation somehow produced oversized result
     if is_2d_matrix(new_wp):
         nr, nc = len(new_wp), (len(new_wp[0]) if new_wp else 0)
         if nr > MAX_MAP_DIM or nc > MAX_MAP_DIM:
             raise HTTPException(422, f"Result would exceed {MAX_MAP_DIM}×{MAX_MAP_DIM} limit ({nr}×{nc})")
 
+    # Validate against A2L limits
     from routers.labels import _build_merged, _require_sr as _req_sr
     sr = await _req_sr(sr_id, db)
     merged = await _build_merged(sr, db)
@@ -303,28 +293,32 @@ async def update_values(
     if body.justification:
         history_entry["justification"] = body.justification
 
-    history = doc.get("edit_history") or []
-    history.append(history_entry)
-
-    now = _now()
-    await run(db, """
-        UPDATE label_working_values
-        SET wp_value=?, modified=1, modified_at=?, modified_by=?, edit_history=?
-        WHERE sw_release_id=? AND label_name=?
-    """, (jd(new_wp), now, user.get("email", ""), jd(history),
-          doc["sw_release_id"], label_name))
+    await db.label_working_values.update_one(
+        {"sw_release_id": doc["sw_release_id"], "label_name": label_name},
+        {
+            "$set": {
+                "wp_value":    new_wp,
+                "modified":    True,
+                "modified_at": _now(),
+                "modified_by": user.get("email", ""),
+            },
+            "$push": {"edit_history": history_entry},
+        },
+    )
 
     from routers.labels import _invalidate_merged_cache
     _invalidate_merged_cache(doc["sw_release_id"])
 
-    await run(db, """
-        INSERT INTO audit_log (id, action, entity_type, entity_id, author, date, sw_release_id, label_name, extra)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (_uuid(), "CALIB_VALUE_EDIT", "label_working_value", label_name,
-          user.get("email", ""), now, sr_id, label_name,
-          jd({"operation": body.operation,
-              "cells_count": len(body.cells) if body.cells else None,
-              "warnings_count": len(warnings)})))
+    await db.audit_log.insert_one({
+        "ts":             _now(),
+        "action":         "CALIB_VALUE_EDIT",
+        "user":           user.get("email", ""),
+        "sw_release_id":  sr_id,
+        "label_name":     label_name,
+        "operation":      body.operation,
+        "cells_count":    len(body.cells) if body.cells else None,
+        "warnings_count": len(warnings),
+    })
 
     return {
         "wp_value": new_wp,
@@ -365,23 +359,24 @@ async def reset_values(
             new_wp = rp
 
     is_modified = (new_wp != doc["rp_value"])
-    history = doc.get("edit_history") or []
-    history.append({
-        "ts":          _now(),
-        "user":        user.get("email", ""),
-        "operation":   "reset",
-        "cells":       cells if cells != "all" else [],
-        "reset_scope": "all" if cells == "all" else "partial",
-    })
-
-    now = _now()
-    await run(db, """
-        UPDATE label_working_values
-        SET wp_value=?, modified=?, modified_at=?, modified_by=?, edit_history=?
-        WHERE sw_release_id=? AND label_name=?
-    """, (jd(new_wp), 1 if is_modified else 0, now, user.get("email", ""), jd(history),
-          doc["sw_release_id"], label_name))
-
+    await db.label_working_values.update_one(
+        {"sw_release_id": doc["sw_release_id"], "label_name": label_name},
+        {
+            "$set": {
+                "wp_value":    new_wp,
+                "modified":    is_modified,
+                "modified_at": _now(),
+                "modified_by": user.get("email", ""),
+            },
+            "$push": {"edit_history": {
+                "ts":          _now(),
+                "user":        user.get("email", ""),
+                "operation":   "reset",
+                "cells":       cells if cells != "all" else [],
+                "reset_scope": "all" if cells == "all" else "partial",
+            }},
+        },
+    )
     from routers.labels import _invalidate_merged_cache
     _invalidate_merged_cache(doc["sw_release_id"])
     return {"wp_value": new_wp, "modified": is_modified}
@@ -397,13 +392,12 @@ async def get_history(
     user=Depends(get_current_user),
 ):
     sr = await _require_sr(sr_id, db)
-    row = await fetch_one(db,
-        "SELECT edit_history FROM label_working_values WHERE sw_release_id=? AND label_name=?",
-        (sr["id"], label_name),
+    doc = await db.label_working_values.find_one(
+        {"sw_release_id": str(sr["_id"]), "label_name": label_name}
     )
-    if not row:
+    if not doc:
         return {"entries": [], "total": 0}
-    history = jl(row.get("edit_history")) or []
+    history = doc.get("edit_history", [])
     return {
         "entries": list(reversed(history))[skip: skip + limit],
         "total":   len(history),

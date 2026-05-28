@@ -1,104 +1,161 @@
-"""Vehicle SW IDs router — SQLite."""
-
-from __future__ import annotations
-
-import uuid
-from datetime import datetime, timezone
-from typing import Optional, List
+"""Vehicle SW IDs router for HERKO Calibration Manager."""
 
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel, ConfigDict
-
-from db import fetch_one, fetch_all, run, get_conn
-from dependencies import get_current_user, now_iso
+from typing import Optional, List
+from datetime import datetime
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorDatabase
+import uuid
+from dependencies import get_db, get_current_user
 
 router = APIRouter(prefix="/vehicle-sw-ids", tags=["Vehicle SW IDs"])
 
 
 class VehicleSwIdGenerateRequest(BaseModel):
+    """Request model for generating a new Vehicle SW ID."""
     dataset_id: str
     vin: Optional[str] = None
     variant: Optional[str] = None
     mfg_order_ref: Optional[str] = None
     service_case_ref: Optional[str] = None
+
     model_config = ConfigDict(populate_by_name=True)
 
 
-def _to_response(doc: dict) -> dict:
-    return {
-        "id": doc["id"],
-        "vehicle_sw_id": doc["vehicle_sw_id"],
-        "sw_release_id": doc["software_release_id"],
-        "sw_release_identifier": doc.get("sw_release_identifier", ""),
-        "dataset_id": doc["dataset_id"],
-        "dataset_name": doc.get("dataset_name", ""),
-        "vin": doc.get("vin"),
-        "variant": doc.get("variant") or doc.get("variant_id"),
-        "mfg_order_ref": doc.get("mfg_order_ref") or doc.get("manufacturing_order_reference"),
-        "service_case_ref": doc.get("service_case_ref") or doc.get("service_case_reference"),
-        "created_by": doc.get("created_by", ""),
-        "created_at": doc.get("creation_date", doc.get("created_at", "")),
-    }
+class VehicleSwIdResponse(BaseModel):
+    """Response model for Vehicle SW ID."""
+    id: str
+    vehicle_sw_id: str
+    sw_release_id: str
+    sw_release_identifier: str
+    dataset_id: str
+    dataset_name: str
+    vin: Optional[str] = None
+    variant: Optional[str] = None
+    mfg_order_ref: Optional[str] = None
+    service_case_ref: Optional[str] = None
+    created_by: str
+    created_at: datetime
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 async def get_user(request: Request):
     return await get_current_user(request)
 
 
-@router.get("")
+@router.get("", response_model=List[VehicleSwIdResponse])
 async def list_vehicle_sw_ids(
     sw_release: Optional[str] = Query(None),
     dataset: Optional[str] = Query(None),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     user: dict = Depends(get_user),
 ):
-    db = get_conn()
-    conditions = ["1=1"]
-    params: list = []
+    """List all Vehicle SW IDs with optional filters."""
+    query = {}
     if sw_release:
-        conditions.append("sw_release_identifier = ?")
-        params.append(sw_release)
+        query["sw_release_identifier"] = sw_release
     if dataset:
-        conditions.append("dataset_name = ?")
-        params.append(dataset)
-    rows = await fetch_all(db, f"SELECT * FROM vehicle_sw_ids WHERE {' AND '.join(conditions)}", tuple(params))
-    return [_to_response(r) for r in rows]
+        query["dataset_name"] = dataset
+
+    documents = await db.vehicle_sw_ids.find(query).to_list(None)
+    return [_to_response(doc) for doc in documents]
 
 
-@router.get("/{vsid_id}")
-async def get_vehicle_sw_id(vsid_id: str, user: dict = Depends(get_user)):
-    db = get_conn()
-    doc = await fetch_one(db, "SELECT * FROM vehicle_sw_ids WHERE id = ?", (vsid_id,))
+@router.get("/{vehicle_sw_id_id}", response_model=VehicleSwIdResponse)
+async def get_vehicle_sw_id(
+    vehicle_sw_id_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Get a single Vehicle SW ID by ID."""
+    try:
+        oid = ObjectId(vehicle_sw_id_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Vehicle SW ID format")
+
+    doc = await db.vehicle_sw_ids.find_one({"_id": oid})
     if not doc:
-        raise HTTPException(404, "Vehicle SW ID not found")
+        raise HTTPException(status_code=404, detail="Vehicle SW ID not found")
+
     return _to_response(doc)
 
 
-@router.post("/generate", status_code=201)
-async def generate_vehicle_sw_id(body: VehicleSwIdGenerateRequest, user: dict = Depends(get_user)):
-    db = get_conn()
-    dataset = await fetch_one(db, "SELECT * FROM datasets WHERE id = ?", (body.dataset_id,))
+@router.post("/generate", response_model=VehicleSwIdResponse, status_code=201)
+async def generate_vehicle_sw_id(
+    body: VehicleSwIdGenerateRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: dict = Depends(get_user),
+):
+    """Generate a new Vehicle SW ID linked to a dataset.
+    
+    Validates that the dataset is in RELEASE_CANDIDATE or RELEASED state.
+    """
+    # 1. Fetch the dataset
+    try:
+        dataset_oid = ObjectId(body.dataset_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid dataset_id format")
+
+    dataset = await db.datasets.find_one({"_id": dataset_oid})
     if not dataset:
-        raise HTTPException(404, "Dataset not found")
-    state = dataset.get("lifecycle_state", "EDIT")
-    if state not in ("RELEASE_CANDIDATE", "RELEASED"):
-        raise HTTPException(400, f"Dataset must be in RELEASE_CANDIDATE or RELEASED state (current: {state})")
+        raise HTTPException(status_code=404, detail="Dataset not found")
 
-    sr_id = dataset["software_release_id"]
-    sw_release = await fetch_one(db, "SELECT * FROM sw_releases WHERE id = ?", (sr_id,))
+    # 2. Validate dataset state
+    dataset_state = dataset.get("state")
+    if dataset_state not in ["RELEASE_CANDIDATE", "RELEASED"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dataset must be in RELEASE_CANDIDATE or RELEASED state (current: {dataset_state})"
+        )
+
+    # 3. Fetch sw_release
+    try:
+        sw_oid = ObjectId(dataset["sw_release_id"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid sw_release_id in dataset")
+
+    sw_release = await db.sw_releases.find_one({"_id": sw_oid})
     if not sw_release:
-        raise HTTPException(404, "SW Release not found")
+        raise HTTPException(status_code=404, detail="SW Release not found")
 
-    new_id = str(uuid.uuid4())
+    # 4. Generate Vehicle_SW_ID
     vehicle_sw_id = str(uuid.uuid4())
-    now = now_iso()
-    await run(db, """
-        INSERT INTO vehicle_sw_ids
-            (id, vehicle_sw_id, software_release_id, sw_release_identifier, dataset_id, dataset_name,
-             vin, variant, mfg_order_ref, service_case_ref, creation_date, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (new_id, vehicle_sw_id, sr_id, sw_release.get("identifier", ""),
-          body.dataset_id, dataset.get("dataset_name", ""),
-          body.vin, body.variant, body.mfg_order_ref, body.service_case_ref,
-          now, user.get("email", "")))
-    doc = await fetch_one(db, "SELECT * FROM vehicle_sw_ids WHERE id = ?", (new_id,))
+
+    # 5. Create and persist document
+    doc = {
+        "vehicle_sw_id": vehicle_sw_id,
+        "sw_release_id": str(sw_oid),
+        "sw_release_identifier": sw_release["identifier"],
+        "dataset_id": body.dataset_id,
+        "dataset_name": dataset["name"],
+        "vin": body.vin,
+        "variant": body.variant,
+        "mfg_order_ref": body.mfg_order_ref,
+        "service_case_ref": body.service_case_ref,
+        "created_by": user.get("email"),
+        "created_at": datetime.utcnow(),
+    }
+    result = await db.vehicle_sw_ids.insert_one(doc)
+    doc["_id"] = result.inserted_id
+
     return _to_response(doc)
+
+
+def _to_response(doc: dict) -> VehicleSwIdResponse:
+    """Convert MongoDB document to response model."""
+    return VehicleSwIdResponse(
+        id=str(doc["_id"]),
+        vehicle_sw_id=doc["vehicle_sw_id"],
+        sw_release_id=doc["sw_release_id"],
+        sw_release_identifier=doc["sw_release_identifier"],
+        dataset_id=doc["dataset_id"],
+        dataset_name=doc["dataset_name"],
+        vin=doc.get("vin"),
+        variant=doc.get("variant"),
+        mfg_order_ref=doc.get("mfg_order_ref"),
+        service_case_ref=doc.get("service_case_ref"),
+        created_by=doc.get("created_by", "unknown"),
+        created_at=doc["created_at"],
+    )

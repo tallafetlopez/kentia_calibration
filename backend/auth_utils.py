@@ -4,11 +4,8 @@ import jwt
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, Request
 
-import aiosqlite
-from db import fetch_one
-
 JWT_ALGORITHM = "HS256"
-ACCESS_TTL_MIN = 60 * 24  # 24h
+ACCESS_TTL_MIN = 60 * 24  # 24h for this demo tool
 
 
 def hash_password(password: str) -> str:
@@ -55,18 +52,14 @@ def extract_token(request: Request) -> str:
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 
-async def get_current_user(request: Request, db: aiosqlite.Connection) -> dict:
+async def get_current_user(request: Request, db):
     token = extract_token(request)
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise HTTPException(status_code=401, detail="Invalid token type")
-    row = await fetch_one(db, "SELECT * FROM users WHERE id = ?", (payload["sub"],))
-    if not row:
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    user = dict(row)
-    user.pop("password_hash", None)
-    from db import jl
-    user["roles"] = jl(user.get("roles")) or []
     return user
 
 

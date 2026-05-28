@@ -85,6 +85,7 @@ def _make_labels(dataset_id: str, all_complete: bool = False, wp_id_map: dict = 
     labels = []
     for name, dtype, unit, val, level, reg, param in A2L_LABELS_TEMPLATE:
         confidence = "VALIDATED" if all_complete else ("DOCUMENTED" if reg == "YES" else "CALIBRATED")
+        # Infer WP and owner from label prefix
         wp_code = next((v for k, v in _WP_PREFIX.items() if name.startswith(k)), None)
         wp_id = (wp_id_map or {}).get(wp_code)
         wp_entry = next((w for w in DEMO_WORK_PACKAGES if w[0] == wp_code), None)
@@ -119,85 +120,107 @@ def _make_labels(dataset_id: str, all_complete: bool = False, wp_id_map: dict = 
     return labels
 
 
-async def seed_all(_db=None):
-    """Seed demo data into SQLite. _db parameter ignored — uses get_conn()."""
-    import json
-    from db import get_conn, run, run_many, fetch_one
-
-    db = get_conn()
-
-    # Clear existing data
-    for table in ["audit_log", "vehicle_sw_ids", "labels", "datasets",
-                  "software_releases", "work_packages", "ecus", "users"]:
-        await run(db, f"DELETE FROM {table}")
-
-    now = datetime.now(timezone.utc).isoformat()
+async def seed_all(db):
+    # Clear existing (idempotent reset)
+    for coll in ["users", "ecus", "software_releases", "datasets", "labels", "vehicle_sw_ids", "audit_log", "work_packages"]:
+        await db[coll].delete_many({})
 
     # Users
+    now = datetime.now(timezone.utc).isoformat()
     for email, name, roles in DEMO_USERS:
-        await run(db, """
-            INSERT OR IGNORE INTO users (id, email, password_hash, name, roles, active_role, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (_uuid(), email, hash_password(DEMO_PASSWORD), name,
-              json.dumps(roles), roles[0], now))
+        await db.users.insert_one(
+            {
+                "id": _uuid(),
+                "email": email,
+                "password_hash": hash_password(DEMO_PASSWORD),
+                "name": name,
+                "roles": roles,
+                "active_role": roles[0],
+                "created_at": now,
+            }
+        )
 
     # ECU
     ecm_id = _uuid()
-    await run(db, "INSERT INTO ecus (id, name, type, active) VALUES (?, ?, ?, 1)",
-              (ecm_id, "ECM", "Engine Control Module"))
+    await db.ecus.insert_one(
+        {"id": ecm_id, "name": "ECM", "type": "Engine Control Module", "active": True}
+    )
 
-    # Work Packages
+    # WorkPackages
     wp_id_map = {}
-    wp_params = []
+    wp_docs = []
     for code, name, responsible, sub_wp in DEMO_WORK_PACKAGES:
         wp_id = _uuid()
         wp_id_map[code] = wp_id
-        wp_params.append((wp_id, code, name, f"WorkPackage {code} — {name}",
-                          ecm_id, sub_wp, responsible, 1, now))
-    await run_many(db, """
-        INSERT OR IGNORE INTO work_packages (id, code, name, description, ecu_id, sub_workpackage, responsible, active, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?)
-    """, wp_params)
+        wp_docs.append({
+            "id": wp_id, "code": code, "name": name,
+            "description": f"WorkPackage {code} — {name}",
+            "ecu_id": ecm_id, "sub_workpackage": sub_wp,
+            "responsible": responsible, "active": True,
+            "created_at": now,
+        })
+    await db.work_packages.insert_many(wp_docs)
 
     # Software Releases
     sr_ids = [_uuid(), _uuid(), _uuid()]
-    for i, (sr_id, identifier, version, desc, supplier, days_ago, status, a2l_ref, dbc_ref, dtc_ref) in enumerate([
-        (sr_ids[0], "ECM-SW-2024.1", "1.4.2", "Baseline software for Euro 6d platform", "Bosch", 120,
-         "VALID_FOR_CALIBRATION", "ECM_SW_2024.1_v1.4.2.a2l", "ECM_CAN_2024.1.dbc", "ECM_DTC_List_2024.1.xlsx"),
-        (sr_ids[1], "ECM-SW-2024.2", "2.0.0", "Performance optimization update", "Bosch", 45,
-         "VALID_FOR_CALIBRATION", "ECM_SW_2024.2_v2.0.0.a2l", "ECM_CAN_2024.2.dbc", "ECM_DTC_List_2024.2.xlsx"),
-        (sr_ids[2], "ECM-SW-2025.1", "2.1.0", "Draft release for platform refresh", "Continental", 0,
-         "DRAFT", None, None, None),
-    ]):
-        release_date = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
-        val_log = json.dumps([{"date": now, "user": "system", "action": "Marked VALID_FOR_CALIBRATION"}]
-                              if status == "VALID_FOR_CALIBRATION" else [])
-        await run(db, """
-            INSERT INTO software_releases
-                (id, ecu_id, software_release_identifier, version, description, supplier,
-                 release_date, status, a2l_file_reference, dbc_reference, dtc_list_reference,
-                 other_artefacts, validation_log)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (sr_id, ecm_id, identifier, version, desc, supplier, release_date,
-              status, a2l_ref, dbc_ref, dtc_ref, json.dumps([]), val_log))
+    releases = [
+        {
+            "id": sr_ids[0],
+            "ecu_id": ecm_id,
+            "software_release_identifier": "ECM-SW-2024.1",
+            "version": "1.4.2",
+            "description": "Baseline software for Euro 6d platform",
+            "supplier": "Bosch",
+            "release_date": (datetime.now(timezone.utc) - timedelta(days=120)).isoformat(),
+            "status": "VALID_FOR_CALIBRATION",
+            "a2l_file_reference": "ECM_SW_2024.1_v1.4.2.a2l",
+            "dbc_reference": "ECM_CAN_2024.1.dbc",
+            "dtc_list_reference": "ECM_DTC_List_2024.1.xlsx",
+            "other_artefacts": ["ECM_CalMap_2024.1.hex"],
+            "validation_log": [
+                {"date": now, "user": "system", "action": "A2L linked"},
+                {"date": now, "user": "system", "action": "Marked VALID_FOR_CALIBRATION"},
+            ],
+        },
+        {
+            "id": sr_ids[1],
+            "ecu_id": ecm_id,
+            "software_release_identifier": "ECM-SW-2024.2",
+            "version": "2.0.0",
+            "description": "Performance optimization update",
+            "supplier": "Bosch",
+            "release_date": (datetime.now(timezone.utc) - timedelta(days=45)).isoformat(),
+            "status": "VALID_FOR_CALIBRATION",
+            "a2l_file_reference": "ECM_SW_2024.2_v2.0.0.a2l",
+            "dbc_reference": "ECM_CAN_2024.2.dbc",
+            "dtc_list_reference": "ECM_DTC_List_2024.2.xlsx",
+            "other_artefacts": [],
+            "validation_log": [{"date": now, "user": "system", "action": "Marked VALID_FOR_CALIBRATION"}],
+        },
+        {
+            "id": sr_ids[2],
+            "ecu_id": ecm_id,
+            "software_release_identifier": "ECM-SW-2025.1",
+            "version": "2.1.0",
+            "description": "Draft release for platform refresh",
+            "supplier": "Continental",
+            "release_date": datetime.now(timezone.utc).isoformat(),
+            "status": "DRAFT",
+            "a2l_file_reference": None,
+            "dbc_reference": None,
+            "dtc_list_reference": None,
+            "other_artefacts": [],
+            "validation_log": [],
+        },
+    ]
+    await db.software_releases.insert_many(releases)
 
     # Datasets
+    datasets = []
+    all_labels = []
+    audit = []
+
     def ds_base(name, sr, state, mode, context, author, post_sales=False, locked=False, deployed=False, baseline=None):
-        accepted = state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED")
-        review = {
-            "technical": "ACCEPTED" if accepted else "PENDING",
-            "project_configuration": "ACCEPTED" if accepted else "PENDING",
-            "regulatory": "ACCEPTED" if accepted else "PENDING",
-            "vnv": "ACCEPTED" if accepted else "PENDING",
-            "technical_comments": "Reviewed internal calibration maps. All within spec." if accepted else "",
-            "project_configuration_comments": "Config traceability ok." if accepted else "",
-            "regulatory_comments": "EU 2017/1151 compliance verified." if accepted else "",
-            "vnv_comments": "HIL runs pass." if accepted else "",
-            "vnv_report_reference": "VNV_Report_2024_Q4.pdf" if accepted else None,
-            "approval_decision": "APPROVED" if accepted else None,
-            "approval_date": now if accepted else None,
-            "approved_by": "eng@herko.dev" if accepted else None,
-        }
         return {
             "id": _uuid(),
             "dataset_name": name,
@@ -213,12 +236,25 @@ async def seed_all(_db=None):
             "creation_date": (datetime.now(timezone.utc) - timedelta(days=20)).isoformat(),
             "last_modified_date": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
             "technical_validation_status": "PASS" if state != "EDIT" else "NOT_RUN",
-            "technical_validation_summary": json.dumps([]),
-            "locked": 1 if (locked or state in ("RELEASE_CANDIDATE", "RELEASED", "DEPRECATED")) else 0,
-            "deployed": 1 if (deployed or state == "RELEASED") else 0,
-            "release_candidate_flag": 1 if state == "RELEASE_CANDIDATE" else 0,
-            "changelog_summary": f"{mode.replace('_', ' ').lower().capitalize()} of {name}",
-            "review": json.dumps(review),
+            "technical_validation_summary": [],
+            "locked": locked,
+            "deployed": deployed,
+            "release_candidate_flag": state == "RELEASE_CANDIDATE",
+            "changelog_summary": f"{mode.replace('_',' ').lower().capitalize()} of {name}",
+            "review": {
+                "technical": "ACCEPTED" if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else ("PENDING"),
+                "project_configuration": "ACCEPTED" if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else "PENDING",
+                "regulatory": "ACCEPTED" if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else "PENDING",
+                "vnv": "ACCEPTED" if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else "PENDING",
+                "technical_comments": "Reviewed internal calibration maps. All within spec." if state != "EDIT" else "",
+                "project_configuration_comments": "Config traceability ok." if state != "EDIT" else "",
+                "regulatory_comments": "EU 2017/1151 compliance verified." if state != "EDIT" else "",
+                "vnv_comments": "HIL runs pass." if state != "EDIT" else "",
+                "vnv_report_reference": "VNV_Report_2024_Q4.pdf" if state != "EDIT" else None,
+                "approval_decision": "APPROVED" if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else None,
+                "approval_date": now if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else None,
+                "approved_by": "eng@herko.dev" if state in ("APPROVED", "RELEASE_CANDIDATE", "RELEASED") else None,
+            },
             "selected_deployment_context": context if state in ("RELEASE_CANDIDATE", "RELEASED") else None,
             "selected_variant_id": None,
             "selection_justification": "Platform rollout" if state in ("RELEASE_CANDIDATE", "RELEASED") else None,
@@ -227,7 +263,7 @@ async def seed_all(_db=None):
             "deprecation_justification": None,
             "deprecation_replacement_id": None,
             "deprecation_date": None,
-            "is_post_sales_derived": 1 if post_sales else 0,
+            "is_post_sales_derived": post_sales,
         }
 
     ds_specs = [
@@ -242,12 +278,12 @@ async def seed_all(_db=None):
         ("DS_VIN_WBA1234567", sr_ids[0], "RELEASED", "REUSE_BASELINE", "VIN_SPECIFIC", "ps@herko.dev"),
         ("DS_FleetTest_Beta", sr_ids[1], "EDIT", "COPY_EXISTING", "DEVELOPMENT", "cal@herko.dev"),
     ]
-    datasets_list = [ds_base(*spec) for spec in ds_specs]
-
-    base_prod = next(x for x in datasets_list if x["dataset_name"] == "DS_Base_Euro6d_Prod")
-    for d in datasets_list:
-        if d["creation_mode"] == "REUSE_BASELINE":
-            d["baseline_dataset_id"] = base_prod["id"]
+    for spec in ds_specs:
+        d = ds_base(*spec)
+        if d["lifecycle_state"] in ("RELEASE_CANDIDATE", "RELEASED"):
+            d["locked"] = True
+        if d["lifecycle_state"] == "RELEASED":
+            d["deployed"] = True
         if "Variant_Sport" in d["dataset_name"]:
             d["variant_id"] = "VAR_SPORT_01"
         if "Variant_Eco" in d["dataset_name"]:
@@ -255,96 +291,82 @@ async def seed_all(_db=None):
             d["selected_variant_id"] = "VAR_ECO_01"
         if "VIN_" in d["dataset_name"]:
             d["vin"] = "WBA1234567ABCDEFG"
-            d["is_post_sales_derived"] = 1
+            d["is_post_sales_derived"] = True
         if "Service_BugFix" in d["dataset_name"]:
-            d["is_post_sales_derived"] = 1
+            d["is_post_sales_derived"] = True
         if d["lifecycle_state"] == "DEPRECATED":
             d["deprecation_justification"] = "Superseded by DS_NextGen_Baseline"
             d["deprecation_date"] = now
+        datasets.append(d)
 
-    ds_params = [(d["id"], d["dataset_name"], d["ecu_id"], d["software_release_id"],
-                  d["lifecycle_state"], d["creation_mode"], d["deployment_context"],
-                  d["variant_id"], d["vin"], d["baseline_dataset_id"], d["author"],
-                  d["creation_date"], d["last_modified_date"], d["technical_validation_status"],
-                  d["technical_validation_summary"], d["locked"], d["deployed"],
-                  d["release_candidate_flag"], d["changelog_summary"], d["review"],
-                  d.get("selected_deployment_context"), d.get("selected_variant_id"),
-                  d.get("selection_justification"), d.get("selected_by"), d.get("selection_date"),
-                  d.get("deprecation_justification"), d.get("deprecation_replacement_id"),
-                  d.get("deprecation_date"), d["is_post_sales_derived"])
-                 for d in datasets_list]
-    await run_many(db, """
-        INSERT OR IGNORE INTO datasets
-            (id, dataset_name, ecu_id, software_release_id, lifecycle_state, creation_mode,
-             deployment_context, variant_id, vin, baseline_dataset_id, author, creation_date,
-             last_modified_date, technical_validation_status, technical_validation_summary,
-             locked, deployed, release_candidate_flag, changelog_summary, review,
-             selected_deployment_context, selected_variant_id, selection_justification,
-             selected_by, selection_date, deprecation_justification, deprecation_replacement_id,
-             deprecation_date, is_post_sales_derived)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, ds_params)
+    # baseline linkage for derived
+    base_prod = next(x for x in datasets if x["dataset_name"] == "DS_Base_Euro6d_Prod")
+    for d in datasets:
+        if d["creation_mode"] == "REUSE_BASELINE":
+            d["baseline_dataset_id"] = base_prod["id"]
 
-    # Labels
-    all_labels = []
-    for d in datasets_list:
+    await db.datasets.insert_many(datasets)
+
+    for d in datasets:
         complete = d["lifecycle_state"] not in ("EDIT",)
         all_labels.extend(_make_labels(d["id"], all_complete=complete, wp_id_map=wp_id_map))
-    label_params = [(l["id"], l["dataset_id"], l["label_name"], l.get("data_type", ""),
-                     l.get("current_value", ""), l.get("unit", ""), l.get("level", "CONFIGURATION"),
-                     l.get("confidence_status", "EMPTY"), l.get("last_modified_by", "system"),
-                     l.get("last_modification_date", now), l.get("regulatory_relevance", "NO"),
-                     l.get("regulation_reference", ""), l.get("parametrizable_in_customer", "NO"),
-                     l.get("parametrizable_override_justification", ""), l.get("change_justification", ""),
-                     l.get("comments", ""), 1 if l.get("imported_from_a2l") else 0,
-                     1 if l.get("modified") else 0, l.get("owner", "BeGas"),
-                     l.get("deputy", ""), l.get("work_package_id"), l.get("maturity", "0"))
-                    for l in all_labels]
-    await run_many(db, """
-        INSERT OR IGNORE INTO labels
-            (id, dataset_id, label_name, data_type, current_value, unit, level,
-             confidence_status, last_modified_by, last_modification_date, regulatory_relevance,
-             regulation_reference, parametrizable_in_customer, parametrizable_override_justification,
-             change_justification, comments, imported_from_a2l, modified, owner, deputy,
-             work_package_id, maturity)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    """, label_params)
+    await db.labels.insert_many(all_labels)
 
-    # Vehicle SW IDs
-    released = [d for d in datasets_list if d["lifecycle_state"] == "RELEASED"]
-    vs_params = []
+    # Vehicle SW IDs for released datasets
+    released = [d for d in datasets if d["lifecycle_state"] == "RELEASED"]
+    vs_ids = []
     for d in released:
-        vs_id = _uuid()
-        vs_params.append((vs_id, vs_id, d["software_release_id"], d["id"],
-                          d.get("variant_id"), d.get("vin"),
-                          f"MO-{_uuid()[:8].upper()}" if not d.get("vin") else None,
-                          f"SC-{_uuid()[:8].upper()}" if d.get("vin") else None,
-                          now, "dma@herko.dev"))
-    if vs_params:
-        await run_many(db, """
-            INSERT OR IGNORE INTO vehicle_sw_ids
-                (id, vehicle_sw_id, software_release_id, dataset_id, variant_id, vin,
-                 manufacturing_order_reference, service_case_reference, creation_date, created_by)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, vs_params)
+        vs_ids.append(
+            {
+                "id": _uuid(),
+                "software_release_id": d["software_release_id"],
+                "dataset_id": d["id"],
+                "variant_id": d.get("variant_id"),
+                "vin": d.get("vin"),
+                "manufacturing_order_reference": f"MO-{_uuid()[:8].upper()}" if not d.get("vin") else None,
+                "service_case_reference": f"SC-{_uuid()[:8].upper()}" if d.get("vin") else None,
+                "creation_date": now,
+                "created_by": "dma@herko.dev",
+            }
+        )
+    if vs_ids:
+        await db.vehicle_sw_ids.insert_many(vs_ids)
 
     # Audit log
-    audit_params = [(_uuid(), "system", "seed", "SEED_DATA_LOADED", None, None, "system", now, "Initial demo seed")]
-    for d in datasets_list:
-        audit_params.append((_uuid(), "dataset", d["id"], f"CREATED → {d['lifecycle_state']}",
-                             None, d["lifecycle_state"], d["author"], d["creation_date"],
-                             d["changelog_summary"]))
-    await run_many(db, """
-        INSERT OR IGNORE INTO audit_log
-            (id, entity_type, entity_id, action, previous_value, new_value, author, date, justification)
-        VALUES (?,?,?,?,?,?,?,?,?)
-    """, audit_params)
+    audit.append(
+        {
+            "id": _uuid(),
+            "entity_type": "system",
+            "entity_id": "seed",
+            "action": "SEED_DATA_LOADED",
+            "previous_value": None,
+            "new_value": None,
+            "author": "system",
+            "date": now,
+            "justification": "Initial demo seed",
+        }
+    )
+    for d in datasets:
+        audit.append(
+            {
+                "id": _uuid(),
+                "entity_type": "dataset",
+                "entity_id": d["id"],
+                "action": f"CREATED → {d['lifecycle_state']}",
+                "previous_value": None,
+                "new_value": d["lifecycle_state"],
+                "author": d["author"],
+                "date": d["creation_date"],
+                "justification": d["changelog_summary"],
+            }
+        )
+    await db.audit_log.insert_many(audit)
 
     return {
         "users": len(DEMO_USERS),
         "ecus": 1,
-        "software_releases": 3,
-        "datasets": len(datasets_list),
+        "software_releases": len(releases),
+        "datasets": len(datasets),
         "labels": len(all_labels),
-        "vehicle_sw_ids": len(vs_params),
+        "vehicle_sw_ids": len(vs_ids),
     }
